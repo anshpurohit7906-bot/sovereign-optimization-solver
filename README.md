@@ -109,24 +109,24 @@ After eliminating the dual-slack direction, the Newton step is reduced to a syst
 
 $$
 \begin{bmatrix}
-H & -A^T\\
+H & -A^T \\
 A & 0
 \end{bmatrix}
 \begin{bmatrix}
-\Delta x\\
+\Delta x \\
 \Delta y
 \end{bmatrix}
 =
 \begin{bmatrix}
-r_1\\
+r_1 \\
 r_2
-\end{bmatrix},
+\end{bmatrix}
 $$
 
 where
 
 $$
-H=\operatorname{diag}(z/x).
+H=\mathrm{diag}(z/x).
 $$
 
 ---
@@ -134,7 +134,6 @@ $$
 ## Constraint Conversion
 
 The current standard-form conversion supports the three basic MPS row types.
-
 ### Equality
 
 $$
