@@ -1,17 +1,12 @@
-You're right — my previous answer was formatted badly for copying. I should have put the **entire README in one single code block**.
+# Sovereign Optimization Solver
 
-Use this exact block. Copy everything inside it into `README.md`:
-
-````markdown
-# SIH26119 — Sovereign Optimization Solver
-
-A from-scratch mathematical optimization solver developed for the SIH26119 problem statement:
+A from-scratch mathematical optimization solver developed for the **SIH26119** problem statement:
 
 **Indigenous GPU-Accelerated Optimization Solver — Sovereign Alternative to Commercial Optimization Engines**
 
-The project aims to build a sovereign optimization engine for large-scale industrial applications such as production planning, blending, logistics, power dispatch, refinery scheduling, and supply-chain optimization.
+The long-term objective is to develop a sovereign optimization engine for large-scale industrial applications such as production planning, blending, logistics, power dispatch, refinery scheduling, and supply-chain optimization.
 
-The current implementation focuses on establishing a reliable **Linear Programming (LP) solver core** before extending the architecture to larger-scale and mixed-integer optimization.
+The current project milestone focuses on establishing a numerically reliable **Linear Programming (LP) solver core** that can serve as the foundation for later QP, MILP, sparse, parallel, and GPU-accelerated extensions.
 
 ---
 
@@ -21,7 +16,7 @@ The project currently contains a working from-scratch LP optimization core based
 
 ### Implemented
 
-- MPS file parsing
+- MPS parsing for the currently supported MPS features and benchmark formats
 - Numerical LP representation
 - Equality (`E`), less-than (`L`), and greater-than (`G`) constraint handling
 - Standard-form LP conversion
@@ -33,56 +28,55 @@ The project currently contains a working from-scratch LP optimization core based
 - Numerical safeguards and finite-value checks
 - Residual-based convergence testing
 - Independent benchmark verification using SciPy/HiGHS
-- Experimental PDHG implementations retained for comparison and research history
+- Experimental PDHG implementations retained for comparison and development history
 
 ---
 
 ## Solver Architecture
 
 ```text
-                    MPS Input
-                        │
-                        ▼
-                 ┌─────────────┐
-                 │ MPS Parser  │
-                 └─────────────┘
-                        │
-                        ▼
-                ┌──────────────┐
-                │ Numerical LP │
-                │    Model     │
-                └──────────────┘
-                        │
-                        ▼
-              ┌──────────────────┐
-              │ Standard-Form LP │
-              │   Conversion     │
-              └──────────────────┘
-                        │
-                        ▼
-              ┌──────────────────┐
-              │ Scaling /        │
-              │ Equilibration    │
-              └──────────────────┘
-                        │
-                        ▼
-          ┌─────────────────────────────┐
-          │ Mehrotra Predictor-          │
-          │ Corrector Interior-Point     │
-          │ Method                       │
-          └─────────────────────────────┘
-                        │
-                        ▼
-              ┌──────────────────┐
-              │ Reduced Newton   │
-              │ System           │
-              └──────────────────┘
-                        │
-                        ▼
-              ┌──────────────────┐
-              │ Solution + KKT   │
-              │ Diagnostics      │
-              └──────────────────┘
+                         MPS Input
+                             │
+                             ▼
+                    ┌─────────────────┐
+                    │   MPS Parser    │
+                    └─────────────────┘
+                             │
+                             ▼
+                    ┌─────────────────┐
+                    │ Numerical LP    │
+                    │     Model       │
+                    └─────────────────┘
+                             │
+                             ▼
+                  ┌─────────────────────┐
+                  │ Standard-Form LP    │
+                  │     Conversion      │
+                  └─────────────────────┘
+                             │
+                             ▼
+                  ┌─────────────────────┐
+                  │ Scaling /            │
+                  │ Equilibration       │
+                  └─────────────────────┘
+                             │
+                             ▼
+             ┌────────────────────────────────┐
+             │ Mehrotra Predictor-Corrector   │
+             │     Interior-Point Method      │
+             └────────────────────────────────┘
+                             │
+                             ▼
+                  ┌─────────────────────┐
+                  │ Reduced Newton      │
+                  │ System              │
+                  └─────────────────────┘
+                             │
+                             ▼
+                  ┌─────────────────────┐
+                  │ Solution + KKT      │
+                  │ Diagnostics         │
+                  └─────────────────────┘
 ````
 
 The continuous LP is represented internally in standard form as
@@ -111,7 +105,7 @@ $$
 XZe=\mu e.
 $$
 
-The Mehrotra method eliminates the bound-multiplier direction and solves a reduced Newton system of the form
+After eliminating the dual-slack direction, the Newton step is reduced to a system of the form
 
 $$
 \begin{bmatrix}
@@ -187,25 +181,31 @@ $$
 
 where \(R\) and \(S\) are row and column scaling factors.
 
-The Newton iterations are performed in scaled coordinates and the final solution and diagnostic quantities are mapped back to the original problem units.
+The Newton iterations operate in scaled coordinates, while the final solution and reported diagnostics are mapped back to the original problem units.
 
-Scaling was particularly important for badly scaled instances such as ADLITTLE.
+Scaling was particularly important for badly scaled instances such as **ADLITTLE**, where it improved the numerical behavior of the interior-point iterations.
 
 ---
 
 ## Current Benchmark Results
 
-The current LP core has been tested on five benchmark problems:
+The current LP core has been tested on five benchmark problems using:
 
-| Benchmark | Status            | Iterations | Relative Primal | Relative Dual | Relative Gap |
-| --------- | ----------------- | ---------: | --------------: | ------------: | -----------: |
-| AFIRO     | ✅ Optimal         |          8 |        9.92e-12 |      6.78e-12 |     7.55e-08 |
-| SC205     | ✅ Optimal         |         10 |        8.61e-11 |      4.34e-12 |     2.67e-08 |
-| ADLITTLE  | ✅ Optimal at 1e-7 |         10 |        8.07e-11 |      4.84e-08 |     7.45e-08 |
-| SHARE2B   | ✅ Optimal         |         12 |        1.67e-08 |      8.73e-08 |     1.31e-10 |
-| BLEND     | ✅ Optimal         |          9 |        1.97e-11 |      1.11e-10 |     6.29e-09 |
+$$
+\boxed{\text{tolerance}=10^{-7}}
+$$
 
-The current practical acceptance target is
+with a maximum of 100 Newton iterations.
+
+| Benchmark | Status    | Iterations | Relative Primal | Relative Dual | Relative Gap |
+| --------- | --------- | ---------: | --------------: | ------------: | -----------: |
+| AFIRO     | ✅ Optimal @ 1e-7 |          8 |        9.92e-12 |      6.78e-12 |     7.55e-08 |
+| SC205     | ✅ Optimal @ 1e-7 |         10 |        8.61e-11 |      4.34e-12 |     2.67e-08 |
+| ADLITTLE  | ✅ Optimal @ 1e-7 |         10 |        8.07e-11 |      4.84e-08 |     7.45e-08 |
+| SHARE2B   | ✅ Optimal @ 1e-7 |         12 |        1.67e-08 |      8.73e-08 |     1.31e-10 |
+| BLEND     | ✅ Optimal @ 1e-7 |          9 |        1.97e-11 |      1.11e-10 |     6.29e-09 |
+
+The current acceptance criteria are
 
 $$
 \text{relative primal residual}\le10^{-7},
@@ -219,11 +219,11 @@ $$
 \text{relative gap}\le10^{-7}.
 $$
 
-All five current benchmark runs satisfy these criteria.
+All five benchmark runs satisfy these criteria.
 
 ### Reference objective comparisons
 
-**AFIRO**
+#### AFIRO
 
 Reference:
 
@@ -231,13 +231,13 @@ $$
 f^\star\approx-464.7531428571
 $$
 
-Solver result:
+Solver:
 
 $$
 -464.7531032020
 $$
 
-**SC205**
+#### SC205
 
 Reference:
 
@@ -245,13 +245,13 @@ $$
 f^\star\approx-52.2020612117
 $$
 
-Solver result:
+Solver:
 
 $$
 -52.2020598569
 $$
 
-**ADLITTLE**
+#### ADLITTLE
 
 Reference:
 
@@ -259,13 +259,13 @@ $$
 f^\star\approx225494.9631623802
 $$
 
-Solver result:
+Solver:
 
 $$
 225494.9747394094
 $$
 
-**SHARE2B**
+#### SHARE2B
 
 Reference:
 
@@ -273,13 +273,13 @@ $$
 f^\star\approx-415.7322407414
 $$
 
-Solver result:
+Solver:
 
 $$
 -415.7322372130
 $$
 
-**BLEND**
+#### BLEND
 
 Reference:
 
@@ -287,33 +287,33 @@ $$
 f^\star\approx-30.8121498458
 $$
 
-Solver result:
+Solver:
 
 $$
 -30.8121496620
 $$
 
-The objectives and KKT diagnostics were independently checked against SciPy's HiGHS implementation.
+The benchmark objectives and KKT diagnostics were independently checked against **SciPy's HiGHS implementation**, which is used only as a verification oracle and is not part of the optimization engine.
 
 ---
 
 ## Why Mehrotra IPM?
 
-An earlier development path explored several **primal-dual hybrid gradient (PDHG)** variants.
+The first development path explored several **Primal-Dual Hybrid Gradient (PDHG)** approaches.
 
-The experiments included:
+Experiments included:
 
 * preconditioning
 * scaling
 * averaging
 * restarts
-* adaptive step mechanisms
+* adaptive step-size mechanisms
 * Barzilai-Borwein style updates
 * PDLP-inspired primal weighting
 
-These experiments were useful for understanding the numerical behavior of the benchmark suite, but SC205 exhibited a persistent stationarity limitation under the tested PDHG configurations.
+These experiments helped characterize the numerical behavior of the benchmark problems. In particular, SC205 exhibited a persistent stationarity limitation under the tested PDHG configurations.
 
-The project therefore pivoted to a **Mehrotra primal-dual interior-point method**, which provides a more suitable foundation for robust sparse LP solving and later extensions to QP and MILP.
+The project therefore pivoted to a **Mehrotra primal-dual interior-point method**, providing a more suitable numerical foundation for the current LP core and for future sparse LP, QP, and MILP extensions.
 
 The earlier PDHG work is retained under:
 
@@ -321,14 +321,14 @@ The earlier PDHG work is retained under:
 experiment/pdhg/
 ```
 
-so that the development history and comparative experiments remain available.
+so that experimental history and algorithm comparisons remain available.
 
 ---
 
 ## Repository Structure
 
 ```text
-SIH26119/
+sovereign-optimization-solver/
 │
 ├── data/
 │   ├── afiro.mps
@@ -365,17 +365,58 @@ SIH26119/
 
 ---
 
+## Requirements
+
+* Python 3.10+
+* NumPy
+* SciPy
+
+SciPy/HiGHS is used for **independent benchmark verification**. It is not used internally by the optimization engine.
+
+Install the required Python packages with:
+
+```bash
+pip install numpy scipy
+```
+
+---
+
 ## Running the Current Solver
 
 From the repository root:
 
-```text
+```bash
 python src/lp/mehrotra.py
 ```
 
-The module regression harness currently exercises the internal tiny LP tests and AFIRO.
+The module regression harness currently runs the built-in tiny LP tests and the AFIRO regression.
 
-Individual benchmark instances can be loaded through the numerical model interface and solved using the Mehrotra LP solver.
+Benchmark files can be loaded through the numerical model interface and solved with the Mehrotra LP solver.
+
+---
+
+## Verification
+
+The solver is validated against independent reference solutions.
+
+HiGHS is used only to:
+
+* verify benchmark objective values;
+* validate feasibility and solution quality;
+* cross-check the numerical results produced by the from-scratch solver.
+
+HiGHS is **not** used as the optimization engine itself.
+
+The solver additionally reports:
+
+* primal residual;
+* dual residual;
+* complementarity;
+* relative primal residual;
+* relative dual residual;
+* relative optimality gap;
+* iteration count;
+* regularization information.
 
 ---
 
@@ -383,14 +424,14 @@ Individual benchmark instances can be loaded through the numerical model interfa
 
 The current implementation is a **research/prototype LP solver core**, not yet a production-scale industrial optimization engine.
 
-### Linear algebra
+### Linear Algebra
 
 * Dense Newton-system construction
 * Dense Cholesky-based factorization
 * No sparse matrix factorization yet
 * No parallel linear algebra yet
 
-### Problem classes
+### Problem Classes
 
 * LP is currently implemented
 * QP is not yet implemented
@@ -398,22 +439,22 @@ The current implementation is a **research/prototype LP solver core**, not yet a
 * Branch-and-bound is not yet implemented
 * Cutting planes and mixed-integer heuristics are not yet implemented
 
-### Model support
+### Model Support
 
-* Current Mehrotra standard-form conversion assumes variables with bounds
+* Current standard-form conversion assumes variables with bounds
 
 $$
 0\le x_j<\infty
 $$
 
-* General finite lower/upper bounds are not yet fully transformed
-* Additional MPS constructs remain to be added as required
+* General finite lower and upper bounds are not yet fully transformed
+* Additional advanced MPS constructs remain to be added as required
 
-### Optimization infrastructure
+### Optimization Infrastructure
 
 * No full presolve pipeline yet
 * No advanced sparse ordering yet
-* No multicore parallel solver architecture yet
+* No multicore solver architecture yet
 * GPU acceleration has not yet been implemented
 
 ---
@@ -451,7 +492,7 @@ Parallelization
 GPU Acceleration
 ```
 
-The immediate priority is **scalability**, particularly replacing the current dense Newton linear algebra with a sparse implementation suitable for large sparse optimization models.
+The immediate technical priority is **scalability**, particularly replacing the current dense Newton linear algebra with a sparse implementation suitable for large sparse optimization models.
 
 ---
 
@@ -459,14 +500,14 @@ The immediate priority is **scalability**, particularly replacing the current de
 
 The project is being developed from the mathematical foundation upward rather than by embedding an existing optimization solver.
 
-The core principles are:
+Core principles:
 
 1. Build the optimization algorithms from first principles.
 2. Keep the numerical pipeline transparent and inspectable.
 3. Validate continuously against recognized benchmark instances.
 4. Use independent solvers only as verification oracles, not as the optimization engine itself.
 5. Treat numerical stability and scalability as first-class requirements.
-6. Keep the architecture modular so that LP, QP, and MILP capabilities can share the same numerical foundation.
+6. Keep the architecture modular so LP, QP, and MILP capabilities can share the same numerical foundation.
 
 ---
 
@@ -477,16 +518,17 @@ The core principles are:
 The current baseline demonstrates:
 
 $$
-\boxed{\text{5/5 benchmark LPs solved at }10^{-7}\text{ tolerance}}
+\boxed{\text{5/5 tested benchmark LPs solved at }10^{-7}\text{ tolerance}}
 $$
 
 including SC205, which exposed the limitations of the earlier first-order approach.
 
-This baseline now serves as the starting point for the next phase:
+This baseline is the starting point for the next development phase:
 
 $$
 \boxed{\text{sparse, scalable optimization}}
 $$
 
-````
+```
+
 
