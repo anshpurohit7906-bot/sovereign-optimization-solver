@@ -1,8 +1,3 @@
-You're right — my previous answer was formatted badly for copying. I should have put the **entire README in one single code block**.
-
-Use this exact block. Copy everything inside it into `README.md`:
-
-````markdown
 # SIH26119 — Sovereign Optimization Solver
 
 A from-scratch mathematical optimization solver developed for the SIH26119 problem statement:
