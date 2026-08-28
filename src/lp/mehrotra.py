@@ -7,9 +7,14 @@ the standard-form LP
     subject to  A x = b
                 x >= 0
 
-by keeping every original variable, appending one nonnegative slack to every
-inequality row (+1 column for 'L' rows: ``a_i^T x + s_i = b_i``; -1 column for
-'G' rows: ``a_i^T x - s_i = b_i``), and keeping every 'E' row as an equality.
+by transforming every original variable into one or two nonnegative columns
+(identity for ``[0, +inf)``; shifted ``x = L + x'`` for LO bounds; reflected
+``x = U - x'`` for UP bounds with a free lower bound; split ``x = x+ - x-``
+for free variables; shifted plus one appended upper-bound row ``x' <= U - L``
+for box bounds ``[L, U]``; substituted out at its fixed value for FX bounds),
+appending one nonnegative slack to every inequality row (+1 column for 'L'
+rows: ``a_i^T x + s_i = b_i``; -1 column for 'G' rows: ``a_i^T x - s_i =
+b_i``), and keeping every 'E' row as an equality.
 The solver MINIMIZES by default (``maximize=False``);
 when ``maximize=True`` is passed explicitly the objective is negated internally
 and ``MehrotraResult.objective`` is reported in the ORIGINAL sense.  Objective
@@ -120,11 +125,21 @@ class StandardFormLP:
     A, b, c_min : standard-form data (``c_min`` is the MINIMIZATION objective).
     c_orig : original objective coefficients over the original variables only.
     maximize : True when the original model maximizes ``c_orig @ x``.
-    n_orig, num_slacks : sizes; ``x_standard[:n_orig]`` are the original
-        variables and ``x_standard[n_orig:]`` are the inequality-row slacks.
-    slack_row_indices : original row indices (of 'L'/'G' rows) that received a
-        slack (+1 column for 'L', -1 column for 'G').
-    var_names, slack_names, row_names : name metadata.
+    n_orig : number of ORIGINAL variables (``len(var_names)``).
+    n_block : number of standard-form columns before the slacks (one for each
+        non-fixed original variable, two for each free variable).
+    block_to_orig, block_sign : column mapping; standard-form column ``k``
+        contributes ``block_sign[k] * x_standard[k]`` to original variable
+        ``block_to_orig[k]``.
+    orig_offset : per-original-variable constant of ``x_j = offset_j +
+        sum_k block_sign[k] * x'_k`` (lower bound for LO/box, upper bound for
+        UP, fixed value for FX -- which have no standard-form column -- else 0).
+    num_slacks : number of inequality-row slacks (original 'L'/'G' rows plus
+        one appended upper-bound row per box variable).
+    slack_row_indices : row indices (into the extended row list) that received
+        a slack (+1 column for 'L', -1 column for 'G').
+    var_names, slack_names, row_names : name metadata; ``row_names`` covers
+        the extended rows (original rows, then box upper-bound rows).
     """
 
     A: np.ndarray
@@ -133,6 +148,10 @@ class StandardFormLP:
     c_orig: np.ndarray
     maximize: bool
     n_orig: int
+    n_block: int
+    block_to_orig: np.ndarray
+    block_sign: np.ndarray
+    orig_offset: np.ndarray
     num_slacks: int
     slack_row_indices: tuple[int, ...]
     var_names: tuple[str, ...]
@@ -147,15 +166,39 @@ class StandardFormLP:
     def n(self) -> int:
         return self.A.shape[1]
 
+    def recover_original(self, x_std: np.ndarray) -> np.ndarray:
+        """Map a standard-form solution back to the original variables.
+
+        Inverts ``x_j = offset_j + sum_k block_sign[k] * x'_k``; fixed (FX)
+        variables have no standard-form column and recover their fixed value
+        from the offset alone.
+        """
+        x = self.orig_offset.copy()
+        block = np.asarray(x_std, dtype=np.float64)[: self.n_block]
+        np.add.at(x, self.block_to_orig, self.block_sign * block)
+        return x
+
 
 def to_standard_form(lp: NumericalLP, *, maximize: bool = False) -> StandardFormLP:
-    """Convert an E/L ``NumericalLP`` to standard form.
+    """Convert an E/L/G ``NumericalLP`` to standard form.
 
-    Every original variable is kept as-is (this converter intentionally does
-    NOT shift or split variables), one nonnegative slack ``s_i >= 0`` is
-    appended for each inequality row (+1 for 'L': ``a^T x + s = b``; -1 for
-    'G': ``a^T x - s = b``), and 'E' rows are kept as equalities.  Variables
-    with bounds other than ``[0, +inf)`` are rejected with a clear error.
+    Every original variable is transformed into nonnegative columns via
+    ``x_j = offset_j + sum_k block_sign[k] * x'_k``:
+
+    - ``[0, +inf)`` -> kept as-is (one column, sign +1, offset 0);
+    - LO ``x >= L`` -> shifted, ``x = L + x'`` (the RHS absorbs ``A @ L``);
+    - UP ``x <= U`` with a free lower bound -> reflected, ``x = U - x'``
+      (column negated, the RHS absorbs ``A @ U``);
+    - FR (free) -> split, ``x = x+ - x-`` (two columns with signs +1/-1);
+    - box ``[L, U]`` -> shifted ``x = L + x'`` plus one appended inequality
+      row ``x' + s = U - L`` enforcing the upper bound;
+    - FX ``x == v`` -> substituted out (no column; rows and objective absorb
+      the constant and recovery restores ``x_j = v``).
+
+    One nonnegative slack is appended for each inequality row of the extended
+    row set (+1 for 'L': ``a^T x + s = b``; -1 for 'G': ``a^T x - s = b``),
+    and 'E' rows are kept as equalities.  Bound types outside this list are
+    rejected with a clear error.
 
     The objective sense defaults to MINIMIZATION (``maximize=False``) and is
     never inferred from the objective row name; pass ``maximize=True``
@@ -176,47 +219,107 @@ def to_standard_form(lp: NumericalLP, *, maximize: bool = False) -> StandardForm
         raise MehrotraError(
             f"row type(s) {bad_types} unsupported; this converter handles E/L/G models only"
         )
-    if np.any(lp.lower_bounds != 0.0):
+
+    # ----- bound classification: x_j = offset_j + sum_k sign_k * x'_k -------
+    lb = np.asarray(lp.lower_bounds, dtype=np.float64)
+    ub = np.asarray(lp.upper_bounds, dtype=np.float64)
+    if lb.shape != (n,) or ub.shape != (n,):
+        raise MehrotraError("bound arrays do not match A")
+
+    is_free = np.isneginf(lb) & np.isposinf(ub)                # FR: split
+    is_reflected = np.isneginf(lb) & np.isfinite(ub)           # UP: reflect
+    is_shifted = np.isfinite(lb) & np.isposinf(ub)             # [0,inf)/LO: shift
+    is_fixed = np.isfinite(lb) & np.isfinite(ub) & (lb == ub)  # FX: substitute
+    is_boxed = np.isfinite(lb) & np.isfinite(ub) & (lb != ub)  # box: shift + row
+    supported = is_free | is_reflected | is_shifted | is_fixed | is_boxed
+    if not supported.all():
+        j = int(np.flatnonzero(~supported)[0])
         raise MehrotraError(
-            "only lower bounds of 0 are supported (variable shifting/splitting not implemented)"
-        )
-    if not np.all(np.isposinf(lp.upper_bounds)):
-        raise MehrotraError(
-            "only +inf upper bounds are supported (finite upper bounds not implemented)"
+            f"variable {lp.var_names[j]!r} has unsupported bounds "
+            f"[{lb[j]!r}, {ub[j]!r}]; supported bound types: LO (x >= L), "
+            "UP with a free lower bound (x <= U), FR (free), box [L, U], "
+            "and FX (fixed)"
         )
 
-    # One nonnegative slack per inequality row, appended after the original
-    # variables: +1 column for 'L' rows (a^T x + s = b), -1 column for 'G'
-    # rows (a^T x - s = b).  For E/L-only models this is identical to the
-    # previous behavior.
-    slack_rows = tuple(i for i, t in enumerate(lp.row_types) if t in ("L", "G"))
+    # Per-original-variable constant: the lower bound for LO/box columns, the
+    # fixed value for FX (recovered directly), the upper bound for reflected
+    # UP columns, and 0 for identity and free splits.
+    orig_offset = np.where(np.isfinite(lb), lb, np.where(np.isfinite(ub), ub, 0.0))
+
+    single_idx = np.flatnonzero(~is_free & ~is_fixed)   # one column each
+    free_idx = np.flatnonzero(is_free)                  # two columns each
+    box_idx = np.flatnonzero(is_boxed)                  # appended rows below
+    n_extra = int(box_idx.size)                         # appended 'L' rows
+
+    single_sign = np.where(is_reflected[single_idx], -1.0, 1.0)
+    block_to_orig = np.concatenate([single_idx, free_idx, free_idx]).astype(np.intp)
+    block_sign = np.concatenate(
+        [single_sign, np.ones(free_idx.size), -np.ones(free_idx.size)]
+    )
+    n_block = int(block_to_orig.size)
+
+    # Transformed constraint columns: FR splits duplicate their original
+    # column with +/- signs; reflected UP columns negate it.
+    A_block = lp.A[:, block_to_orig] * block_sign[None, :]
+    # The RHS absorbs every constant term of the transformation (LO shifts,
+    # UP reflections, and the fixed values of substituted FX columns).
+    b_std = lp.b.astype(np.float64) - lp.A @ orig_offset
+
+    # Extended row set: the original rows plus one 'L' row per box variable.
+    std_row_types = tuple(lp.row_types) + ("L",) * n_extra
+    m_std = m + n_extra
+    std_row_names = tuple(lp.row_names) + tuple(
+        f"{lp.var_names[j]}_upper" for j in box_idx
+    )
+
+    # One nonnegative slack per inequality row of the extended row set:
+    # +1 column for 'L' rows (a^T x + s = b), -1 column for 'G' rows
+    # (a^T x - s = b).  Without box variables this is identical to the
+    # previous slack construction.
+    slack_rows = tuple(i for i, t in enumerate(std_row_types) if t in ("L", "G"))
     num_slacks = len(slack_rows)
 
     if num_slacks:
-        slack_cols = np.eye(m)[:, list(slack_rows)]
-        signs = np.array([1.0 if lp.row_types[i] == "L" else -1.0
+        slack_cols = np.eye(m_std)[:, list(slack_rows)]
+        signs = np.array([1.0 if std_row_types[i] == "L" else -1.0
                           for i in slack_rows])
         slack_cols = slack_cols * signs
-        A_std = np.hstack([lp.A, slack_cols])
+        A_std = np.hstack([A_block, slack_cols[:m]])
     else:
-        A_std = lp.A.copy()
+        A_std = A_block
+
+    if n_extra:
+        # Box upper-bound rows: shifted column + slack = U - L.  The box rows
+        # sit at the end of the extended row list, so their slack columns are
+        # the last n_extra slack columns, in the same order.
+        col_of = np.full(n, -1, dtype=np.intp)
+        col_of[single_idx] = np.arange(single_idx.size)
+        A_bottom = np.zeros((n_extra, n_block + num_slacks))
+        A_bottom[np.arange(n_extra), col_of[box_idx]] = 1.0
+        A_bottom[np.arange(n_extra),
+                 n_block + num_slacks - n_extra + np.arange(n_extra)] = 1.0
+        A_std = np.vstack([A_std, A_bottom])
+        b_std = np.concatenate(
+            [b_std, (ub[box_idx] - lb[box_idx]).astype(np.float64)]
+        )
 
     zero_rows = np.flatnonzero(np.abs(A_std).sum(axis=1) == 0.0)
     if zero_rows.size:
-        name = lp.row_names[int(zero_rows[0])]
+        name = std_row_names[int(zero_rows[0])]
         raise MehrotraError(
             f"row {name!r} is all zero in standard form; the Newton system would be singular"
         )
-    if np.linalg.matrix_rank(A_std) < m:
+    if np.linalg.matrix_rank(A_std) < m_std:
         raise MehrotraError(
             "standard-form constraint matrix is rank deficient; "
             "the Schur complement A H^-1 A^T would be singular"
         )
 
     c_orig = lp.c.astype(np.float64).copy()
-    c_min = np.concatenate([-c_orig if maximize else c_orig, np.zeros(num_slacks)])
-    b_std = lp.b.astype(np.float64).copy()
-    slack_names = tuple(f"{lp.row_names[i]}_slack" for i in slack_rows)
+    base = -c_orig if maximize else c_orig
+    c_block = block_sign * base[block_to_orig]
+    c_min = np.concatenate([c_block, np.zeros(num_slacks)])
+    slack_names = tuple(f"{std_row_names[i]}_slack" for i in slack_rows)
 
     return StandardFormLP(
         A=A_std,
@@ -225,11 +328,15 @@ def to_standard_form(lp: NumericalLP, *, maximize: bool = False) -> StandardForm
         c_orig=c_orig,
         maximize=bool(maximize),
         n_orig=n,
+        n_block=n_block,
+        block_to_orig=block_to_orig,
+        block_sign=block_sign,
+        orig_offset=orig_offset,
         num_slacks=num_slacks,
         slack_row_indices=slack_rows,
         var_names=tuple(lp.var_names),
         slack_names=slack_names,
-        row_names=tuple(lp.row_names),
+        row_names=std_row_names,
     )
 
 
@@ -254,7 +361,7 @@ class MehrotraResult:
     message: str
     objective: float
     x: np.ndarray               # original variables (n_orig,)
-    x_standard: np.ndarray      # full standard-form primal (n_orig + num_slacks,)
+    x_standard: np.ndarray      # full standard-form primal (n_block + num_slacks,)
     y: np.ndarray               # equality duals (m,) for the min standard form
     z_standard: np.ndarray      # dual slacks (n_orig + num_slacks,)
     primal_residual: float      # ||A x - b||_inf (absolute)
@@ -376,6 +483,10 @@ def solve_standard_form(sf: StandardFormLP, *, tol: float = 1e-8, max_iter: int 
     history: list[dict] = []
     regularized_iters: list[int] = []
     best_rel_gap = float("inf")
+    best_x: Optional[np.ndarray] = None
+    best_y: Optional[np.ndarray] = None
+    best_z: Optional[np.ndarray] = None
+    best_k: Optional[int] = None
     k = 0
     mu = float("nan")
     rel_p = rel_d = rel_gap = float("nan")
@@ -384,6 +495,16 @@ def solve_standard_form(sf: StandardFormLP, *, tol: float = 1e-8, max_iter: int 
     message = f"iteration limit ({max_iter}) reached without convergence"
 
     def _finish(st: str, msg: str) -> MehrotraResult:
+        # For non-optimal exits, report the best trusted iterate observed before
+        # the numerical tail rather than the final noise-dominated iterate.
+        nonlocal x, y, z
+        if st != "optimal" and best_x is not None:
+            x = best_x.copy()
+            y = best_y.copy()
+            z = best_z.copy()
+            if best_k is not None:
+                msg = f"{msg}; returning best trusted iterate from k={best_k}"
+
         # Map the equilibrated terminal iterate back to original units:
         # x = S x_hat, y = R y_hat, z = z_hat / S (from A_s = R A S,
         # b_s = R b, c_s = S c), then recompute every reported metric on the
@@ -397,7 +518,7 @@ def solve_standard_form(sf: StandardFormLP, *, tol: float = 1e-8, max_iter: int 
         cx = float(sf.c_min @ x_std)
         by = float(sf.b @ y_orig)
         rel_gap_o = abs(cx - by) / (1.0 + abs(cx) + abs(by))
-        x_orig = x_std[: sf.n_orig]
+        x_orig = sf.recover_original(x_std)
         return MehrotraResult(
             status=st,
             message=msg,
@@ -436,8 +557,12 @@ def solve_standard_form(sf: StandardFormLP, *, tol: float = 1e-8, max_iter: int 
         })
         # Trust the gap measure only while complementarity is above the floor;
         # inside the tail it is corrupted by dual-side rounding noise.
-        if mu > mu_floor_eff:
-            best_rel_gap = min(best_rel_gap, rel_gap)
+        if mu > mu_floor_eff and rel_gap < best_rel_gap:
+            best_rel_gap = rel_gap
+            best_x = x.copy()
+            best_y = y.copy()
+            best_z = z.copy()
+            best_k = k
 
         if not (np.isfinite(mu) and mu > 0.0):
             return _finish("numerical_failure",

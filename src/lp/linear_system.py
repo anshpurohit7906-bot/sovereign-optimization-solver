@@ -18,8 +18,14 @@ H is kept as its regularized diagonal (so H-solves are elementwise
 divisions and no dense H/W/S matrices are built), and the symmetrized
 Schur complement S = A_E (H + reg I)^{-1} A_E^T is factorized with
 SuperLU (``scipy.sparse.linalg.splu``).  One factorization is reused for
-the predictor and corrector right-hand sides of an iteration.  A
-non-diagonal SPD H falls back to the previous dense Cholesky path.
+the predictor and corrector right-hand sides of an iteration.  When the
+Schur system is very ill-conditioned a single LU solve can be
+rounding-limited; the sparse path therefore applies at most two
+iterative-refinement corrections to ``dy``, each accepted only if it
+strictly reduces the residual of the EXACT regularized Schur system that
+was factored (the escalated diagonal regularization is stored on the
+factorization and used in the residual).  A non-diagonal SPD H falls back
+to the previous dense Cholesky path.
 
 Both backends apply escalating diagonal regularization if a factorization
 breaks down (``reg = base_reg * max(1, mean|diag|)``, multiplied by 10 up
@@ -59,19 +65,25 @@ def _chol_solve(L: np.ndarray, B: np.ndarray) -> np.ndarray:
     return np.linalg.solve(L.T, Y)
 
 
-def _splu_regularized(S: sp.csr_matrix, base_reg: float) -> SuperLU:
+def _splu_regularized(S: sp.csr_matrix, base_reg: float
+                      ) -> tuple[SuperLU, float]:
     """SuperLU factorization of sym(S) + reg*I with escalating reg (sparse).
 
     Sparse mirror of ``_cholesky_regularized``: same start
     ``reg = base_reg * max(1, mean|diag(sym(S))|)`` and the same 8-step x10
     escalation, applied to the symmetrized sparse Schur complement.
+
+    Returns ``(lu, reg)`` with the ACTUAL diagonal regularization ``reg`` of
+    the returned factorization: the exact matrix factored is
+    ``sym(S) + reg * I``, and any downstream residual computation (e.g. the
+    iterative refinement in ``_schur_refine``) must use this same ``reg``.
     """
     M = (0.5 * (S + S.T)).tocsc()
     scale = max(1.0, float(np.mean(np.abs(M.diagonal()))))
     reg = base_reg * scale
     for _ in range(8):
         try:
-            return splu(M + sp.eye(M.shape[0], format="csc") * reg)
+            return splu(M + sp.eye(M.shape[0], format="csc") * reg), reg
         except RuntimeError:
             reg *= 10.0
     raise LinearSystemError("Sparse factorization failed even with regularization")
@@ -93,6 +105,7 @@ class ReducedNewtonFactorization:
     h_diag: Optional[np.ndarray] = None
     A_sp: Optional[sp.csr_matrix] = None
     schur_lu: Optional[SuperLU] = None
+    schur_reg: Optional[float] = None
     H_chol: Optional[np.ndarray] = None
     A_eq: Optional[np.ndarray] = None
     schur_chol: Optional[np.ndarray] = None
@@ -139,8 +152,46 @@ def factor_reduced_system(
 
     W_sp = A_sp.T.multiply((1.0 / h_diag)[:, None]).tocsr()  # (H+regI)^{-1} A_E^T
     S_sp = A_sp @ W_sp                                       # sparse m x m
-    schur_lu = _splu_regularized(S_sp, reg)
-    return ReducedNewtonFactorization(h_diag=h_diag, A_sp=A_sp, schur_lu=schur_lu)
+    schur_lu, schur_reg = _splu_regularized(S_sp, reg)
+    return ReducedNewtonFactorization(h_diag=h_diag, A_sp=A_sp, schur_lu=schur_lu,
+                                      schur_reg=schur_reg)
+
+
+def _schur_residual(fac: ReducedNewtonFactorization, b: np.ndarray,
+                    v: np.ndarray) -> tuple[np.ndarray, float]:
+    """Residual ``r = b - (sym(S) + schur_reg*I) v`` of the regularized Schur
+    system, computed without building a dense S: ``sym(S) v = A (A^T v / h)``.
+    The regularization is the EXACT escalated value stored on the
+    factorization (``fac.schur_reg``) -- the system actually factored.
+    """
+    q = (fac.A_sp.T @ v) / fac.h_diag
+    r = b - (fac.A_sp @ q) - fac.schur_reg * v
+    return r, float(np.linalg.norm(r, ord=np.inf))
+
+
+def _schur_refine(fac: ReducedNewtonFactorization, b: np.ndarray,
+                  dy: np.ndarray) -> np.ndarray:
+    """At most two iterative-refinement corrections of the sparse Schur solve.
+
+    Each candidate ``dy + dc`` (``dc`` from the existing SuperLU factors) is
+    accepted only if its residual against the EXACT regularized Schur system
+    ``sym(S) + schur_reg*I`` is strictly smaller than the current iterate's;
+    otherwise refinement is stopped and the previous iterate is kept.  When
+    correction does not help (e.g. cond ~ 1/eps), the original ``dy`` is
+    returned unchanged.
+    """
+    best = dy
+    r, rnorm = _schur_residual(fac, b, best)
+    for _ in range(2):
+        if rnorm == 0.0:
+            break
+        cand = best + fac.schur_lu.solve(r)
+        rc, rn = _schur_residual(fac, b, cand)
+        if rn < rnorm:
+            best, r, rnorm = cand, rc, rn
+        else:
+            break
+    return best
 
 
 def solve_reduced_system(
@@ -153,7 +204,9 @@ def solve_reduced_system(
         t = rhs_x / fac.h_diag  # t = H^{-1} rhs_x
         if fac.num_eq == 0:
             return t, np.zeros(0)
-        dy = fac.schur_lu.solve(rhs_eq - fac.A_sp @ t)
+        b = rhs_eq - fac.A_sp @ t
+        dy = fac.schur_lu.solve(b)
+        dy = _schur_refine(fac, b, dy)
         dx = (rhs_x + fac.A_sp.T @ dy) / fac.h_diag
         return dx, dy
     # Dense fallback: general SPD H (previous behavior, unchanged).
