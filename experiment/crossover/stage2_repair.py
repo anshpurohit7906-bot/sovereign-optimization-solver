@@ -1,4 +1,4 @@
-"""STAGE 2 — RRQR basis → feasibility repair → Phase II hand-off (experimental).
+""" p here and how to do it to understand political rhythmic drawn catolar message bought dgonars mert nice mummy growth dunk catory bathory type chuck tiffinity charte walk it shin on there you go already got in the wood giving out three tattoos and my son was one of his victims did you get this address you see that there are so sorry at the hospital police to red close generally once again twenty four hours second country Usa all expenses paid for the week you're all allions and at this apartment in twenty one years in Kinet and I have been down here for a very long time that's sure what a group present it to be where you lost back in Sweden and everybody at the time it was chain everybody knew about this this kind of special interests I say nowadays technology the consumer related uncomplicated most people in the way first memories to help me to create memories and once camera rule as gold as we are the producerI (experimental).
 
 Isolated under experiment/crossover/.  Production code is imported READ-ONLY:
 
@@ -44,7 +44,6 @@ import time
 
 import numpy as np
 import scipy.linalg as sla
-import scipy.linalg.lapack as lap
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.normpath(os.path.join(_HERE, "..", ".."))
@@ -70,45 +69,9 @@ SIMPLEX_TOL = 1e-8
 # Repair-specific safety parameters (documented in STAGE2_DESIGN.md).
 PIVOT_REL_TOL = 1e-7     # |alpha_r[q]| >= PIVOT_REL_TOL * ||alpha_r||_inf
 RESID_LIMIT = 1e-7       # relative solve-residual acceptance for B_new x = b
-MAX_COND_EVALS = 100     # conditioning evaluations allowed per pivot
-                         # (cheap O(m^2) getrf+gecon 1-norm screen, so a
-                         # larger budget is affordable than with SVD)
+MAX_COND_EVALS = 20      # SVD conditioning evaluations allowed per pivot
 MAX_DEGENERATE = 50      # consecutive non-improving pivots before fallback
 INFEAS_TOL = 1e-7        # x_B[i] < -INFEAS_TOL counts as infeasible
-
-# --- cheap 1-norm condition screen ------------------------------------------
-# LAPACK getrf+dgecon gives the EXACT 1-norm condition number in O(m^2) after
-# the O(m^3) LU (which the candidate needs anyway for the solve), vs O(m^3)
-# SVD for np.linalg.cond.  By Hoelder (||.||_1 >= ||.||_2 on both A and A^-1),
-# cond_1 >= cond_2 always, so screening at the production 2-norm limit is
-# CONSERVATIVE: any candidate passing this screen also passes the production
-# np.linalg.cond 2-norm gate.  The true 2-norm is computed once for the
-# ACCEPTED pivot only, for production-parity reporting.
-_dgetrf = lap.dgetrf
-_dgecon = lap.dgecon
-
-
-def cond1_screen(B: np.ndarray) -> tuple[float, object]:
-    """Exact 1-norm condition number via LU + dgecon (inf on failure).
-
-    Returns ``(cond1, lu_piv)`` where ``lu_piv`` is the LU factorization
-    (``scipy.linalg.lu_factor`` format) of B -- candidates need this for the
-    ratio/solve anyway, so no work is duplicated.
-    """
-    try:
-        lu1, piv1, info = _dgetrf(B)
-        if info < 0 or info > 0:
-            return float("inf"), None
-        anorm = float(np.abs(B).sum(axis=0).max())  # 1-norm
-        if anorm == 0.0:
-            return float("inf"), None
-        rcond, _ = _dgecon(lu1, anorm, norm="1")
-        if not np.isfinite(rcond) or rcond <= 0.0:
-            return float("inf"), None
-        return 1.0 / float(rcond), (lu1, piv1)
-    except Exception:
-        return float("inf"), None
-
 
 
 def basis_metrics(A: np.ndarray, b: np.ndarray, basis) -> dict:
@@ -162,11 +125,6 @@ def repair_feasibility(A: np.ndarray, b: np.ndarray, basis0,
     cycling = False
     cycle_kick_pending = False
     cycle_kicks = 0
-    # Devex reference-framework weights (init 1): approximate the steepest
-    # edge ||B^-1 a_j|| so the entering rule maximizes the improvement RATE
-    # d_j^2 / w_j instead of raw Dantzig |d_j|, which crawls on wide LPs
-    # (1428 columns) because raw reduced costs are not scale comparable.
-    weights = np.ones(n)
 
     for p in range(max_pivots):
         infeas = np.flatnonzero(x_b < -INFEAS_TOL)
@@ -202,15 +160,13 @@ def repair_feasibility(A: np.ndarray, b: np.ndarray, basis0,
             )
             break
 
-        # Entering rule: Devex-normalized Dantzig -- maximize d_j^2 / w_j
-        # (steepest-edge-style improvement rate) with deterministic
+        # Entering rule: Dantzig (most negative d_j) with deterministic
         # tie-break on column index; Bland fallback (lowest index) after a
         # run of degenerate (non-improving) pivots to break cycling.
         if degenerate_run >= MAX_DEGENERATE:
             order = cand[np.argsort(cand, kind="stable")]
         else:
-            score = d_all[cand] ** 2 / weights[cand]
-            order = cand[np.lexsort((cand, -score))]
+            order = cand[np.lexsort((cand, d_all[cand]))]
 
         accepted = False
         rejected_unsafe = 0
@@ -286,8 +242,7 @@ def repair_feasibility(A: np.ndarray, b: np.ndarray, basis0,
                         continue
                     # lexicographic comparison with relative tolerance
                     diff = w - best_w
-                    scale = np.maximum(
-                        np.maximum(1.0, np.abs(w)), np.abs(best_w))
+                    scale = np.maximum(1.0, np.abs(w), np.abs(best_w))
                     nz = np.flatnonzero(np.abs(diff) > 1e-12 * scale)
                     if nz.size and diff[nz[0]] < 0.0:
                         r, best_w = int(r_cand), w
@@ -302,14 +257,16 @@ def repair_feasibility(A: np.ndarray, b: np.ndarray, basis0,
             B_new = B.copy()
             B_new[:, r] = A[:, q]
             n_cond_evals += 1
-            # cheap exact 1-norm screen; conservative w.r.t. the 2-norm gate
-            cond1, lu_piv = cond1_screen(B_new)
-            if not np.isfinite(cond1) or cond1 > CONDITION_LIMIT:
+            # production gate: same conditioning check as _solve_basis
+            try:
+                cond_new = float(np.linalg.cond(B_new))
+            except np.linalg.LinAlgError:
                 rejected_unsafe += 1
                 continue
-            # reuse the screen's LU factorization (getrf output is exactly
-            # the (lu, piv) format lu_factor/lu_solve use -- no refactor)
-            lu_new = lu_piv
+            if not np.isfinite(cond_new) or cond_new > CONDITION_LIMIT:
+                rejected_unsafe += 1
+                continue
+            lu_new = sla.lu_factor(B_new)
             x_new = sla.lu_solve(lu_new, b)
             # solve accuracy
             resid = _inf_norm(B_new @ x_new - b) / bnorm
@@ -324,45 +281,6 @@ def repair_feasibility(A: np.ndarray, b: np.ndarray, basis0,
                 continue
             # ---- accept ----
             leaving = basis[r]
-            # The production 2-norm gate (np.linalg.cond via SVD) is the
-            # authoritative check, but the cheap 1-norm screen (LU + dgecon)
-            # is conservative: cond_1 >= cond_2 always per Hoelder's inequality.
-            # If the 1-norm screen passes, the 2-norm gate should also pass.
-            # We keep the 1-norm screen as the pivot-selection gate and compute
-            # the true 2-norm only for final reporting below.
-            if not np.isfinite(cond1) or cond1 > CONDITION_LIMIT:
-                rejected_unsafe += 1
-                continue
-            # Compute true 2-norm condition for reporting (after the 1-norm gate passes)
-            try:
-                cond_new = float(np.linalg.cond(B_new))
-            except np.linalg.LinAlgError:
-                cond_new = cond1
-            # Devex weight update (Forrest-Goldfarb reference framework):
-            # with entering q and leaving row r, tableau row
-            # alpha_rj = (B_old^-1 A)[r, j]; for each remaining nonbasic j
-            #     w_j <- max(w_j, (w_q / alpha_rq^2) * alpha_rj^2)
-            # and the leaving variable inherits w = max(w_q/alpha_rq^2, 1).
-            # This keeps w_j an upper-bound approximation of ||B^-1 a_j||^2,
-            # so the entering rule approximates the true steepest edge.
-            piv_elem = float(alpha_q[r])
-            if piv_elem != 0.0:
-                e_r = np.zeros(m)
-                e_r[r] = 1.0
-                rho = sla.lu_solve(lu, e_r, trans=1)      # OLD basis
-                row_r = A.T @ rho
-                ratio = weights[q] / (piv_elem * piv_elem)
-                nb_old = nonbasic_mask.copy()
-                nb_old[q] = False
-                upd = np.maximum(weights, ratio * row_r ** 2)
-                weights[:] = np.where(nb_old, upd, weights)
-                weights[leaving] = max(ratio, 1.0)
-                if float(np.max(weights)) > 1e6:
-                    # Standard Devex safeguard: accumulated weights drift
-                    # above the true ||B^-1 a_j||^2; re-anchoring the
-                    # reference framework (all weights 1) keeps the
-                    # approximation valid.
-                    weights[:] = 1.0
             pivots.append({
                 "pivot": p, "entering": int(q), "leaving": leaving,
                 "leaving_value": float(x_b[r]), "step": step,
