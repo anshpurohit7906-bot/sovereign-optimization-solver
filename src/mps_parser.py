@@ -179,6 +179,15 @@ class MPSParser:
           col_name  row1_name  value1  [row2_name  value2]
         The objective row entries are extracted separately.
         """
+        # Integer markers appear as ordinary COLUMNS data (e.g.
+        # "    MARKER  'MARKER'  'INTORG'"), not as a section header, so
+        # they must be caught here rather than in the header-detection loop.
+        if "'MARKER'" in fields and ("'INTORG'" in fields or "'INTEND'" in fields):
+            raise MPSParseError(
+                f"Line {self._line_num}: Integer variable markers "
+                "(MARKER/INTORG/INTEND) are not implemented by this parser."
+            )
+
         if len(fields) < 3:
             raise MPSParseError(f"Line {self._line_num}: COLUMNS entry too short: {fields}")
 
@@ -343,10 +352,21 @@ class MPSParser:
             # Section headers are unindented in conventional MPS.
             # Indented records such as "    RHS ROW00001 200." are data,
             # not new RHS section headers.
-            is_header = not line[0].isspace() and first_token in (
-                "NAME", "ROWS", "COLUMNS", "RHS", "BOUNDS", "RANGES", "ENDATA"
+            is_supported_header = not line[0].isspace() and first_token in (
+                "NAME", "ROWS", "COLUMNS", "RHS", "BOUNDS", "ENDATA"
             )
-            if is_header:
+            # RANGES/SOS/QUADOBJ/INDICATORS are recognized but not yet
+            # implemented: reject explicitly at the section header rather
+            # than silently ignoring the section's body.
+            is_unsupported_header = not line[0].isspace() and first_token in (
+                "RANGES", "SOS", "QUADOBJ", "INDICATORS"
+            )
+            if is_unsupported_header:
+                raise MPSParseError(
+                    f"Line {self._line_num}: Unsupported MPS section "
+                    f"'{first_token}' is not implemented by this parser."
+                )
+            if is_supported_header:
                 self._section = first_token
                 if self._section == "NAME":
                     self._handle_name(line)
@@ -369,9 +389,6 @@ class MPSParser:
                 self._handle_rhs(fields, line)
             elif self._section == "BOUNDS":
                 self._handle_bounds(fields)
-            elif self._section == "RANGES":
-                # Not supported in initial version; silently skip or warn
-                pass
             else:
                 raise MPSParseError(
                     f"Line {self._line_num}: Data found outside of a recognized section: {line.strip()}"

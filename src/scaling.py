@@ -13,6 +13,11 @@ class ScaledLP:
     column_scale: np.ndarray
 
 def _safe_reciprocal_max(values: np.ndarray, axis: int) -> np.ndarray:
+    # np.max raises on an empty reduction axis (e.g. an LP with zero rows,
+    # which arises when every variable is fixed); such systems are trivially
+    # equilibrated with all scales 1.
+    if values.shape[axis] == 0:
+        return np.ones(values.shape[1 - axis])
     magnitude = np.max(np.abs(values), axis=axis)
     return np.where(magnitude > 0.0, 1.0 / magnitude, 1.0)
 

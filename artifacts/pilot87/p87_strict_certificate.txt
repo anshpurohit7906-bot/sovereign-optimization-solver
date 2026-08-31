@@ -1,0 +1,78 @@
+C:\Users\anshp\OneDrive\SIH26119\scratch\p87_strict_polish.py:137: RuntimeWarning: divide by zero encountered in divide
+  ratios = np.where(pos_mask, x_basic / d, np.inf)
+C:\Users\anshp\OneDrive\SIH26119\scratch\p87_strict_polish.py:137: RuntimeWarning: invalid value encountered in divide
+  ratios = np.where(pos_mask, x_basic / d, np.inf)
+======================================================================
+STRICT SIMPLEX POLISH — PILOT87 terminal basis
+======================================================================
+Terminal basis: it=18587  m=3608 n=8038  basis_size=3608
+Solver obj (scaled std-form): 301.711611177
+
+Before polish: min_rc=-7.731e-08  n_neg=9
+  polish it=1: enter=1929 rc=-7.731e-08 leave=71 ratio=1.300e+01 deg=N obj=301.711610172
+  polish it=2: enter=2594 rc=-2.070e-05 leave=7988 ratio=5.878e-03 deg=N obj=301.711610050
+  polish it=3: enter=164 rc=-7.671e-08 leave=160 ratio=1.938e+00 deg=N obj=301.711609902
+  polish it=4: enter=925 rc=-1.481e-07 leave=1130 ratio=1.278e+00 deg=N obj=301.711609713
+  polish it=5: enter=311 rc=-1.828e-08 leave=2594 ratio=7.661e-01 deg=N obj=301.711609699
+  polish it=6: enter=193 rc=-1.307e-08 leave=3266 ratio=2.300e+01 deg=N obj=301.711609398
+  polish it=7: enter=2594 rc=-3.776e-06 leave=191 ratio=4.572e-02 deg=N obj=301.711609225
+  polish it=8: enter=7091 rc=-1.044e-08 leave=4304 ratio=8.378e+02 deg=N obj=301.711600475
+  polish it=9: enter=4344 rc=-5.109e-03 leave=1417 ratio=1.499e-03 deg=N obj=301.711592818
+  polish it=10: enter=2514 rc=-2.243e-04 leave=2155 ratio=4.043e-03 deg=N obj=301.711591912
+  polish it=11: enter=7988 rc=-6.094e-05 leave=4344 ratio=6.013e-02 deg=N obj=301.711588247
+  polish it=12: enter=4304 rc=-5.947e-05 leave=7925 ratio=4.084e-02 deg=N obj=301.711585818
+  polish it=13: enter=7941 rc=-1.342e-05 leave=2594 ratio=3.559e-01 deg=N obj=301.711581043
+  polish it=14: enter=4600 rc=-3.918e-05 leave=311 ratio=8.422e-02 deg=N obj=301.711577743
+  polish it=15: enter=71 rc=-1.302e-04 leave=4303 ratio=3.229e-02 deg=N obj=301.711573538
+  polish it=16: enter=38 rc=-6.211e-06 leave=221 ratio=5.022e-01 deg=N obj=301.711570419
+  polish it=17: enter=3462 rc=-6.209e-06 leave=49 ratio=3.152e-02 deg=N obj=301.711570223
+  polish it=18: enter=4364 rc=-3.667e-06 leave=3462 ratio=1.674e-01 deg=N obj=301.711569609
+  polish it=19: enter=4303 rc=-8.919e-05 leave=1615 ratio=1.010e-02 deg=N obj=301.711568708
+  polish it=20: enter=250 rc=-1.845e-07 leave=4303 ratio=5.551e-01 deg=N obj=301.711568606
+  polish it=21: enter=3462 rc=-2.392e-06 leave=4364 ratio=6.276e-01 deg=N obj=301.711567104
+  polish it=22: enter=102 rc=-1.257e-07 leave=3335 ratio=4.929e+00 deg=N obj=301.711566485
+  polish it=23: enter=7684 rc=-2.065e-06 leave=2943 ratio=8.386e-02 deg=N obj=301.711566312
+  polish it=24: enter=3335 rc=-2.169e-05 leave=1174 ratio=1.769e-02 deg=N obj=301.711565928
+  polish it=25: enter=191 rc=-1.609e-08 leave=4059 ratio=1.195e+01 deg=N obj=301.711565736
+  polish it=26: enter=4303 rc=-2.487e-06 leave=4466 ratio=6.613e-02 deg=N obj=301.711565571
+  polish it=27: enter=7833 rc=-8.538e-07 leave=250 ratio=2.712e-01 deg=N obj=301.711565339
+  polish it=28: enter=1174 rc=-9.171e-07 leave=4303 ratio=9.922e-02 deg=N obj=301.711565248
+  polish it=29: enter=49 rc=-3.870e-07 leave=193 ratio=2.830e-02 deg=N obj=301.711565238
+  polish it=30: enter=2155 rc=-2.159e-08 leave=4563 ratio=4.838e+00 deg=N obj=301.711565133
+  STRICT OPTIMAL at polish iter=30, min_rc=0.000e+00 (all >= 0)
+
+======================================================================
+STRICT POLISH RESULT:
+  Pivots taken:      30
+  Min reduced cost:  0.000e+00
+  Neg reduced costs: 0
+  Final objective:   301.711565133
+======================================================================
+Saved polished basis to p87_strict_polished.npz
+
+======================================================================
+STRICT KKT CERTIFICATE (raw precision, no tolerance floor)
+======================================================================
+[1] Primal ||Ax-b||_inf  = 1.637e-11
+[2] min(z_nonbasic)      = -1.417e-14
+    num z < 0            = 5
+    num z < -1e-12       = 0
+    cond(B)              = 5.4e+08  (sign noise floor ~1.2e-05)
+[3] Complementarity x'z  = -3.679e-13
+[4] Basis residual       = 1.637e-11
+[5] Original objective   = 301.710347333
+    HiGHS reference      = 301.710347333
+    |delta|              = 1.109e-10
+[6] Orig primal feasibility:
+    E-row residual       = 3.638e-12
+    Ineq violation       = 1.086e-11
+    lb violation         = 0.000e+00
+    ub violation         = 7.276e-12
+[7] Strong duality gap   = 1.137e-13
+
+======================================================================
+VERDICT: STRICT VERIFIED OPTIMAL
+  reduced costs: min=-1.42e-14 (noise floor 1.2e-05) -> all >= 0 within cond noise
+  original objective vs HiGHS: |delta|=1.109e-10
+  (elapsed 33.7s)
+======================================================================

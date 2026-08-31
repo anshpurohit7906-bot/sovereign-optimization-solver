@@ -309,7 +309,9 @@ def to_standard_form(lp: NumericalLP, *, maximize: bool = False) -> StandardForm
         raise MehrotraError(
             f"row {name!r} is all zero in standard form; the Newton system would be singular"
         )
-    if np.linalg.matrix_rank(A_std) < m_std:
+    # A system with zero rows is trivially full row rank; matrix_rank on an
+    # empty SVD would raise, so only run the check when rows exist.
+    if m_std > 0 and np.linalg.matrix_rank(A_std) < m_std:
         raise MehrotraError(
             "standard-form constraint matrix is rank deficient; "
             "the Schur complement A H^-1 A^T would be singular"
@@ -417,24 +419,6 @@ def _max_step(v: np.ndarray, dv: np.ndarray) -> float:
     return float(np.min(-v[neg] / dv[neg]))
 
 
-def _schur_needs_regularization(A: np.ndarray, H: np.ndarray) -> bool:
-    """True when S = A H^-1 A^T is not Cholesky-factorizable without regularization.
-
-    ``linear_system`` always applies (and escalates, if needed) its own
-    regularization but cannot report it, and it must not be modified; H is
-    diagonal positive definite by construction, so this cheap pre-check on the
-    exact Schur complement is the honest way to detect when the backend's
-    escalating regularization will actually engage beyond its default jitter.
-    """
-    W = A.T / H[:, None]          # H^{-1} A^T (H is diagonal and positive)
-    S = A @ W
-    try:
-        np.linalg.cholesky(0.5 * (S + S.T))
-        return False
-    except np.linalg.LinAlgError:
-        return True
-
-
 # ---------------------------------------------------------------------------
 # Solver
 # ---------------------------------------------------------------------------
@@ -465,6 +449,32 @@ def solve_standard_form(sf: StandardFormLP, *, tol: float = 1e-8, max_iter: int 
     if mu_floor <= 0.0:
         raise ValueError("mu_floor must be positive")
 
+    if n == 0:
+        # Every variable was fixed (FX) and there are no slacks: the standard
+        # form has no columns, so the unique feasible point is x = () and the
+        # objective is the constant c_orig @ recover_original(()).  There is
+        # nothing to iterate on.
+        x_std = np.zeros(0)
+        x_orig = sf.recover_original(x_std)
+        return MehrotraResult(
+            status="optimal",
+            message="all variables fixed; constant objective, no iteration needed",
+            objective=float(sf.c_orig @ x_orig),
+            x=x_orig.copy(),
+            x_standard=x_std,
+            y=np.zeros(m),
+            z_standard=np.zeros(0),
+            primal_residual=0.0,
+            dual_residual=0.0,
+            rel_primal=0.0,
+            rel_dual=0.0,
+            complementarity=0.0,
+            rel_gap=0.0,
+            iterations=0,
+            regularized_iterations=(),
+            history=(),
+        )
+
     # Row/column equilibration (existing ``scaling.scale_lp``): the Newton
     # iterations run entirely in the scaled coordinates
     #     A_s = R A S,  b_s = R b,  c_s = S c,  x = S x_hat,
@@ -482,7 +492,7 @@ def solve_standard_form(sf: StandardFormLP, *, tol: float = 1e-8, max_iter: int 
 
     history: list[dict] = []
     regularized_iters: list[int] = []
-    best_rel_gap = float("inf")
+    best_merit = float("inf")
     best_x: Optional[np.ndarray] = None
     best_y: Optional[np.ndarray] = None
     best_z: Optional[np.ndarray] = None
@@ -493,17 +503,19 @@ def solve_standard_form(sf: StandardFormLP, *, tol: float = 1e-8, max_iter: int 
     primal_abs = dual_abs = float("nan")
     status = "max_iterations"
     message = f"iteration limit ({max_iter}) reached without convergence"
+    norm_b_orig = _inf_norm(sf.b)
+    norm_c_orig = _inf_norm(sf.c_min)
 
     def _finish(st: str, msg: str) -> MehrotraResult:
         # For non-optimal exits, report the best trusted iterate observed before
         # the numerical tail rather than the final noise-dominated iterate.
-        nonlocal x, y, z
+        nonlocal x, y, z, k
         if st != "optimal" and best_x is not None:
             x = best_x.copy()
             y = best_y.copy()
             z = best_z.copy()
-            if best_k is not None:
-                msg = f"{msg}; returning best trusted iterate from k={best_k}"
+            k = int(best_k) if best_k is not None else k
+            msg = f"{msg}; returning best trusted iterate from k={best_k}"
 
         # Map the equilibrated terminal iterate back to original units:
         # x = S x_hat, y = R y_hat, z = z_hat / S (from A_s = R A S,
@@ -518,6 +530,21 @@ def solve_standard_form(sf: StandardFormLP, *, tol: float = 1e-8, max_iter: int 
         cx = float(sf.c_min @ x_std)
         by = float(sf.b @ y_orig)
         rel_gap_o = abs(cx - by) / (1.0 + abs(cx) + abs(by))
+        rel_p_o = primal_abs_o / (1.0 + norm_b_orig)
+        rel_d_o = dual_abs_o / (1.0 + norm_c_orig)
+
+        # The termination test runs in scaled coordinates (trajectory-level
+        # criterion).  The reported metrics are in original coordinates, so an
+        # "optimal" claim must also be confirmed there; otherwise the scaled
+        # criterion was misleading and we report the honest degraded status.
+        if st == "optimal" and max(rel_p_o, rel_d_o, rel_gap_o) > tol:
+            st = "numerical_tail"
+            msg = (
+                f"{msg}; scaled residuals passed tolerance but original-coordinate "
+                f"residuals did not (rel_p={rel_p_o:.3e}, rel_d={rel_d_o:.3e}, "
+                f"rel_gap={rel_gap_o:.3e})"
+            )
+
         x_orig = sf.recover_original(x_std)
         return MehrotraResult(
             status=st,
@@ -529,8 +556,8 @@ def solve_standard_form(sf: StandardFormLP, *, tol: float = 1e-8, max_iter: int 
             z_standard=z_std.copy(),
             primal_residual=primal_abs_o,
             dual_residual=dual_abs_o,
-            rel_primal=primal_abs_o / (1.0 + _inf_norm(sf.b)),
-            rel_dual=dual_abs_o / (1.0 + _inf_norm(sf.c_min)),
+            rel_primal=rel_p_o,
+            rel_dual=rel_d_o,
             complementarity=mu_o,
             rel_gap=rel_gap_o,
             iterations=k,
@@ -543,6 +570,11 @@ def solve_standard_form(sf: StandardFormLP, *, tol: float = 1e-8, max_iter: int 
         r_p = A @ x - b
         r_d = A.T @ y + z - c
         mu = float(x @ z) / n
+        # Diagnostic centrality measurements (do not affect solver behavior)
+        theta = (x * z) / mu
+        theta_min = float(np.min(theta))
+        theta_max = float(np.max(theta))
+        theta_dev = float(np.max(np.abs(theta - 1.0)))
         primal_abs = _inf_norm(r_p)
         dual_abs = _inf_norm(r_d)
         rel_p = primal_abs / (1.0 + norm_b)
@@ -551,18 +583,38 @@ def solve_standard_form(sf: StandardFormLP, *, tol: float = 1e-8, max_iter: int 
         by = float(b @ y)
         rel_gap = abs(cx - by) / (1.0 + abs(cx) + abs(by))
 
+        # Original-coordinate residuals of the same iterate (used only for the
+        # best-iterate selection below and for the reported history; the
+        # trajectory and its termination test stay in scaled coordinates).
+        x_std = unscale_solution(x, col_scale)
+        y_orig = row_scale * y
+        z_std = z / col_scale
+        rel_p_o = _inf_norm(sf.A @ x_std - sf.b) / (1.0 + norm_b_orig)
+        rel_d_o = _inf_norm(sf.A.T @ y_orig + z_std - sf.c_min) / (1.0 + norm_c_orig)
+        cx_o = float(sf.c_min @ x_std)
+        by_o = float(sf.b @ y_orig)
+        rel_gap_o = abs(cx_o - by_o) / (1.0 + abs(cx_o) + abs(by_o))
+
         history.append({
             "iter": k, "mu": mu, "primal": rel_p, "dual": rel_d, "rel_gap": rel_gap,
+            "primal_orig": rel_p_o, "dual_orig": rel_d_o, "rel_gap_orig": rel_gap_o,
             "alpha_p": None, "alpha_d": None, "sigma": None, "regularized": False,
+            "theta_min": theta_min, "theta_max": theta_max, "theta_dev": theta_dev,
         })
-        # Trust the gap measure only while complementarity is above the floor;
-        # inside the tail it is corrupted by dual-side rounding noise.
-        if mu > mu_floor_eff and rel_gap < best_rel_gap:
-            best_rel_gap = rel_gap
-            best_x = x.copy()
-            best_y = y.copy()
-            best_z = z.copy()
-            best_k = k
+        # Best-iterate selection in ORIGINAL coordinates.  merit = max of the
+        # three normalized residuals is the same scalarization the convergence
+        # test uses (all three must be <= tol), so the point that minimizes it
+        # is the iterate closest to the acceptance region measured by the
+        # reported metrics.  This is preferred over selecting on the scaled gap,
+        # which can return a point whose original primal residual is large.
+        if np.isfinite(rel_p_o) and np.isfinite(rel_d_o) and np.isfinite(rel_gap_o):
+            merit = max(rel_p_o, rel_d_o, rel_gap_o)
+            if merit < best_merit:
+                best_merit = merit
+                best_x = x.copy()
+                best_y = y.copy()
+                best_z = z.copy()
+                best_k = k
 
         if not (np.isfinite(mu) and mu > 0.0):
             return _finish("numerical_failure",
@@ -585,24 +637,25 @@ def solve_standard_form(sf: StandardFormLP, *, tol: float = 1e-8, max_iter: int 
         # another step instead of driving the trajectory indefinitely.
         if mu <= mu_floor_eff:
             primal_ok = rel_p <= tol
-            gap_ok = best_rel_gap <= max(tol, 1e3 * np.finfo(float).eps)
+            gap_ok = best_merit <= max(tol, 1e3 * np.finfo(float).eps)
             if primal_ok and gap_ok:
                 status = "numerical_tail"
                 message = (
                     f"complementarity mu={mu:.3e} reached the scale-aware floor "
                     f"{mu_floor_eff:.3e} at iteration {k}: primal feasibility is "
-                    f"within tolerance (rel_p={rel_p:.3e}) and the best relative "
-                    f"gap seen was {best_rel_gap:.3e}, but the dual residual "
-                    f"(rel_d={rel_d:.3e}) is degraded by rounding noise in the "
-                    f"degenerate tail; stopped instead of taking further "
-                    f"noise-dominated Newton steps"
+                    f"within tolerance (rel_p={rel_p:.3e}) and the best "
+                    f"original-coordinate merit seen was {best_merit:.3e}, but "
+                    f"the dual residual (rel_d={rel_d:.3e}) is degraded by "
+                    f"rounding noise in the degenerate tail; stopped instead of "
+                    f"taking further noise-dominated Newton steps"
                 )
             else:
                 status = "stalled"
                 message = (
                     f"complementarity mu={mu:.3e} reached the scale-aware floor "
                     f"{mu_floor_eff:.3e} at iteration {k} without practical "
-                    f"accuracy (rel_p={rel_p:.3e}, best_rel_gap={best_rel_gap:.3e})"
+                    f"accuracy (rel_p={rel_p:.3e}, best original merit "
+                    f"{best_merit:.3e})"
                 )
             break
 
@@ -614,21 +667,33 @@ def solve_standard_form(sf: StandardFormLP, *, tol: float = 1e-8, max_iter: int 
                            f"iterate lost positivity or finiteness at iteration {k}")
 
         h = z / x
+        # Diagnostic measurements (do not affect solver behavior)
+        history[-1]["h_min"] = float(np.min(h))
+        history[-1]["h_max"] = float(np.max(h))
+        history[-1]["h_ratio"] = float(np.max(h) / np.min(h))
+        history[-1]["x_min"] = float(np.min(x))
+        history[-1]["x_max"] = float(np.max(x))
+        history[-1]["z_min"] = float(np.min(z))
+        history[-1]["z_max"] = float(np.max(z))
+
         if (not np.all(np.isfinite(h))) or np.any(h <= 0.0):
             return _finish("numerical_failure",
                            f"barrier h = z/x is not positive finite at iteration {k}")
 
-        regularized = _schur_needs_regularization(A, h)
-        history[-1]["regularized"] = regularized
-        if regularized:
-            regularized_iters.append(k)
-
-        H_matrix = np.diag(h)
         try:
-            fac = factor_reduced_system(H_matrix, A)
+            fac = factor_reduced_system(h, A)
         except LinearSystemError as exc:
             return _finish("numerical_failure",
                            f"Newton factorization failed at iteration {k}: {exc}")
+
+        if fac.schur_reg is not None and fac.A_sp is not None:
+            diag_scale = max(1.0, float(np.mean(fac.A_sp.power(2).dot(1.0 / fac.h_diag))))
+            regularized = fac.schur_reg > 1.5e-12 * diag_scale
+        else:
+            regularized = False
+        history[-1]["regularized"] = regularized
+        if regularized:
+            regularized_iters.append(k)
 
         # ----- affine predictor -------------------------------------------
         rc = x * z

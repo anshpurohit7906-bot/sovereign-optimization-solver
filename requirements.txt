@@ -1,0 +1,10 @@
+# Runtime dependencies for the SIH26119 optimization core.
+#
+# Verified environment: Python 3.13.2, numpy 2.3.4, scipy 1.18.1.
+# The scipy dependency also provides the HiGHS-backed `linprog` used only as a
+# reference oracle (tests/verify_with_highs.py); it is never the solve engine.
+#
+# Install:
+#   python -m pip install -r requirements.txt
+numpy>=1.26
+scipy>=1.11
