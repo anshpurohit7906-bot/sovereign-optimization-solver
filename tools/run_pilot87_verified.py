@@ -8,14 +8,16 @@ only invokes the existing, validated stage scripts in sequence:
   -> artifacts/pilot87/p87_prepared.npz            (preparation)
   -> artifacts/pilot87/p87_phase2_v2_final.npz     (Phase II)
   -> artifacts/pilot87/p87_strict_polished.npz     (strict polish)
-  -> artifacts/pilot87/p87_strict_certificate.txt  (certification)
+  -> artifacts/pilot87/p87_strict_certificate.txt  (polish stdout)
+  -> artifacts/pilot87/p87_certificate.txt         (certification)
 
 All generated artifacts live under artifacts/pilot87/ (canonical location).
 There is no scratch/ handoff: each stage reads exactly what the previous
-stage wrote, directly from the canonical artifact directory.  The final
-certificate stage captures the certification script's report into
-p87_strict_certificate.txt, which is verified to exist before the pipeline
-is considered complete.
+stage wrote, directly from the canonical artifact directory.  The strict-polish
+stage's stdout is captured into the strict certificate
+(p87_strict_certificate.txt), and the certification stage's report is captured
+into its own certificate (p87_certificate.txt).  Both certificate files are
+verified to exist and be non-empty before the pipeline is considered complete.
 
 Usage:
     OPENBLAS_NUM_THREADS=1 python tools/run_pilot87_verified.py
@@ -45,7 +47,11 @@ PREPARED_NPZ = os.path.join(ARTIFACT_DIR, "p87_prepared.npz")
 PREPARED_A_NPZ = os.path.join(ARTIFACT_DIR, "p87_prepared_A.npz")
 PHASE2_FINAL_NPZ = os.path.join(ARTIFACT_DIR, "p87_phase2_v2_final.npz")
 POLISHED_NPZ = os.path.join(ARTIFACT_DIR, "p87_strict_polished.npz")
-CERT_FILE = os.path.join(ARTIFACT_DIR, "p87_strict_certificate.txt")
+# The strict certificate (p87_strict_certificate.txt) is produced by capturing
+# the strict-polish script's stdout; the certification report is captured into
+# its own p87_certificate.txt.  Both are verified to exist and be non-empty.
+STRICT_CERT_FILE = os.path.join(ARTIFACT_DIR, "p87_strict_certificate.txt")
+CERT_FILE = os.path.join(ARTIFACT_DIR, "p87_certificate.txt")
 
 
 def _run_stage(label: str, script: str, *args: str) -> int:
@@ -83,14 +89,40 @@ def main() -> int:
               f"{PHASE2_FINAL_NPZ}", flush=True)
         return 1
 
-    # ---- 3. Strict polish (-> polished solution) ----
-    _run_stage("strict polish", POLISH)
+    # ---- 3. Strict polish (-> polished solution + strict certificate) ----
+    print(f"\n===== STAGE: strict polish =====", flush=True)
+    polish_cmd = [sys.executable, "-u", POLISH]
+    with open(STRICT_CERT_FILE, "w", encoding="utf-8") as _strict_out:
+        proc = subprocess.Popen(
+            polish_cmd, env=STAGE_ENV,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, bufsize=1,
+        )
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            sys.stdout.write(line)
+            sys.stdout.flush()
+            _strict_out.write(line)
+        rc = proc.wait()
+    if rc != 0:
+        print(f"\n[FAILED] Stage 'strict polish' exited with code {rc}. "
+              f"Pipeline aborted.", flush=True)
+        sys.exit(rc)
+    print(f"[OK] Stage 'strict polish' completed (exit 0).", flush=True)
     if not os.path.isfile(POLISHED_NPZ):
         print(f"ERROR: strict polish did not produce expected artifact: "
               f"{POLISHED_NPZ}", flush=True)
         return 1
+    if not os.path.isfile(STRICT_CERT_FILE):
+        print(f"ERROR: strict polish did not produce the strict certificate: "
+              f"{STRICT_CERT_FILE}", flush=True)
+        return 1
+    if os.path.getsize(STRICT_CERT_FILE) == 0:
+        print(f"ERROR: strict certificate file is empty: {STRICT_CERT_FILE}",
+              flush=True)
+        return 1
 
-    # ---- 4. Certification (captures printed report -> strict certificate file) ----
+    # ---- 4. Certification (captures printed report -> certificate file) ----
     print(f"\n===== STAGE: certification =====", flush=True)
     cert_cmd = [sys.executable, "-u", CERTIFY]
     with open(CERT_FILE, "w", encoding="utf-8") as _cert_out:
@@ -121,6 +153,7 @@ def main() -> int:
         return 1
 
     print(f"\nCertificate:       {CERT_FILE}", flush=True)
+    print(f"Strict certificate:{STRICT_CERT_FILE}", flush=True)
     print(f"Polished artifact: {POLISHED_NPZ}", flush=True)
     print("Pipeline completed.", flush=True)
     return 0

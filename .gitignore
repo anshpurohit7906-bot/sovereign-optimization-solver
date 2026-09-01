@@ -16,3 +16,25 @@ scratch/
 
 # Historical research archive (not part of active pipeline)
 archive/
+
+# Exploratory / diagnostic experiment scratch (not part of the documented pipeline)
+experiment/augmented_kkt/
+experiment/mcc/
+experiment/newton_diagnostics/
+experiment/regularization/
+experiment/ruiz_scaling/
+experiment/crossover/experiment_basis_fill.py
+experiment/crossover/ipm_iterate_diag.py
+experiment/crossover/launch_p87_v2_detached.py
+experiment/crossover/p87_phase2_diag.py
+experiment/crossover/p87_phase2_helpers.py
+experiment/crossover/p87_phase2_instrumented.py
+experiment/crossover/p87_run_phase2.py
+experiment/crossover/phase2_diagnostic.py
+experiment/crossover/run_pilot87_crossover.py
+experiment/crossover/sparse_crossover_ipm.py
+experiment/crossover/sparse_phase2.py
+experiment/crossover/sparse_repair.py
+experiment/crossover/stage1_out.txt
+experiment/crossover/terminal_diag.py
+experiment/crossover/verify_ipm_p87.py

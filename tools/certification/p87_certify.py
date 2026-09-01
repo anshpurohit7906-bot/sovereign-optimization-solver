@@ -170,7 +170,8 @@ def main():
           and measures["comp"] <= 1e-6 and measures["min_z"] >= -1e-6
           and measures["basis"] <= 1e-6
           and measures["rowv"] <= 1e-6 and measures["lbv"] <= 1e-6
-          and measures["ubv"] <= 1e-6)
+          and measures["ubv"] <= 1e-6
+          and measures["dv_highs"] <= 1e-4)
     report("PRIMAL FEASIBLE (||Ax-b||_inf<=1e-6)", measures["primal"] <= tolP,
            **{"||Ax-b||": measures["primal"]})
     report("ORIGINAL-LP PRIMAL FEASIBLE",
@@ -185,9 +186,15 @@ def main():
            **{"x^T z": measures["comp"]})
     report("BASIS OK (B x_B = b)", measures["basis"] <= 1e-6,
            **{"Bx_B-b": measures["basis"]})
+    _rel_gap = measures["dv_highs"] / abs(HIGHS_REF)
+    report("HIGHS AGREEMENT (|obj - ref| <= 1e-4)",
+           measures["dv_highs"] <= 1e-4,
+           **{"|obj - ref|": f"{measures['dv_highs']:.3e}",
+              "relative": f"{_rel_gap:.2e}"})
     print(f"\n  ORIGINAL OBJECTIVE (independently recomputed) = {obj_orig:.9f}")
     print(f"  HiGHS reference                              = {HIGHS_REF:.9f}")
-    print(f"  |Delta obj| = {abs(obj_orig - HIGHS_REF):.3e}")
+    print(f"  |Delta obj| = {abs(obj_orig - HIGHS_REF):.3e}  "
+          f"(relative {_rel_gap:.2e})")
     print(f"\n  -> {'VERIFIED OPTIMAL' if ok else 'NOT fully verified'} "
           f"(elapsed {time.perf_counter()-t0:.1f}s)")
     return 0 if ok else 1

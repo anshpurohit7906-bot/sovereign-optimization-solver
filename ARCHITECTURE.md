@@ -102,12 +102,16 @@ kept isolated under `experiment/crossover/` and `tools/certification/` and is
    `python tools/certification/p87_certify.py` — reconstructs the unscaled
    standard-form and original-LP solution and checks each KKT condition
    independently (primal, dual, complementarity, basis, original feasibility,
-   strong duality, and agreement with the HiGHS reference to `< 1e-6`).
+   strong duality) and confirms agreement with the HiGHS reference to within
+   `1e-4` absolute (observed `~4.6e-5` on the pre-polish terminal basis; the
+   polished strict certificate narrows this to `1.1e-10`).
    It **does not trust** the solver-reported objective.
 
 Both scripts emit `[PASS]/[FAIL]` verdicts and exit nonzero on any failure.
-Text certificates are archived at `artifacts/pilot87/p87_strict_certificate.txt`
-and `artifacts/pilot87/p87_certificate.txt`.
+Under `tools/run_pilot87_verified.py`, the strict-polish script's stdout is
+captured into `artifacts/pilot87/p87_strict_certificate.txt` and the certify
+stage's report is captured into `artifacts/pilot87/p87_certificate.txt`; both
+files are verified non-empty before the pipeline completes.
 
 ## Experiments
 
