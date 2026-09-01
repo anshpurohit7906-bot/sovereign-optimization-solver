@@ -5,14 +5,15 @@ final persisted solution, reconstructs A/b/c in *unscaled* standard form and in
 the *original* LP variables, and verifies each KKT condition independently.
 
 Usage:
-    OPENBLAS_NUM_THREADS=1 python scratch/p87_certify.py
+    OPENBLAS_NUM_THREADS=1 python tools/certification/p87_certify.py
 """
 from __future__ import annotations
 import os, sys, time
 import numpy as np
 import scipy.sparse as sp
 
-_ROOT = r"c:\Users\anshp\OneDrive\SIH26119"
+_HERE = os.path.dirname(os.path.abspath(os.path.dirname(__file__)))
+_ROOT = os.path.normpath(os.path.join(_HERE, ".."))
 SCRATCH = os.path.join(_ROOT, "artifacts", "pilot87")
 for _p in (_ROOT, os.path.join(_ROOT, "src"), os.path.join(_ROOT, "src", "lp"),
            os.path.join(_ROOT, "experiment", "crossover")):

@@ -1,8 +1,18 @@
 __pycache__/
 *.pyc
+*.pyo
 .pytest_cache/
 .venv/
 venv/
 .env
 .vscode/
 .idea/
+
+# Generated pipeline artifacts (regenerate via: python tools/run_pilot87_verified.py)
+artifacts/
+
+# Working scratch / log files
+scratch/
+
+# Historical research archive (not part of active pipeline)
+archive/

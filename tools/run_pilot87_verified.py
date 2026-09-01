@@ -1,0 +1,99 @@
+"""Orchestrate the validated PILOT87 crossover pipeline end-to-end.
+
+Sole responsibility: run the four validated stages in order and make the
+artifact flow automatic.  It implements NO solver or algorithmic logic - it
+only invokes the existing, validated stage scripts in sequence:
+
+    data/pilot87.mps
+  -> artifacts/pilot87/p87_prepared.npz            (preparation)
+  -> artifacts/pilot87/p87_phase2_v2_final.npz     (Phase II)
+  -> artifacts/pilot87/p87_strict_polished.npz     (strict polish)
+  -> certificate emission                           (certification)
+
+All generated artifacts live under artifacts/pilot87/ (canonical location).
+There is no scratch/ handoff: each stage reads exactly what the previous
+stage wrote, directly from the canonical artifact directory.
+
+Usage:
+    OPENBLAS_NUM_THREADS=1 python tools/run_pilot87_verified.py
+"""
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_ROOT = os.path.normpath(os.path.join(_HERE, ".."))
+
+MPS_PATH = os.path.join(_ROOT, "data", "pilot87.mps")
+ARTIFACT_DIR = os.path.join(_ROOT, "artifacts", "pilot87")
+
+# Each stage runs its own script as a subprocess, inheriting this env.
+STAGE_ENV = dict(os.environ, OPENBLAS_NUM_THREADS="1")
+
+PREPARE = os.path.join(_ROOT, "experiment", "crossover", "p87_prepare.py")
+PHASE2 = os.path.join(_ROOT, "experiment", "crossover", "p87_phase2_v2.py")
+POLISH = os.path.join(_ROOT, "tools", "certification", "p87_strict_polish.py")
+CERTIFY = os.path.join(_ROOT, "tools", "certification", "p87_certify.py")
+
+# Expected canonical artifacts produced at each stage boundary.
+PREPARED_NPZ = os.path.join(ARTIFACT_DIR, "p87_prepared.npz")
+PREPARED_A_NPZ = os.path.join(ARTIFACT_DIR, "p87_prepared_A.npz")
+PHASE2_FINAL_NPZ = os.path.join(ARTIFACT_DIR, "p87_phase2_v2_final.npz")
+POLISHED_NPZ = os.path.join(ARTIFACT_DIR, "p87_strict_polished.npz")
+
+
+def _run_stage(label: str, script: str, *args: str) -> int:
+    """Run one validated stage as a subprocess and propagate failures."""
+    print(f"\n===== STAGE: {label} =====", flush=True)
+    cmd = [sys.executable, "-u", script, *args]
+    rc = subprocess.call(cmd, env=STAGE_ENV)
+    if rc != 0:
+        print(f"\n[FAILED] Stage '{label}' exited with code {rc}. "
+              f"Pipeline aborted.", flush=True)
+        sys.exit(rc)
+    print(f"[OK] Stage '{label}' completed (exit 0).", flush=True)
+    return rc
+
+
+def main() -> int:
+    if not os.path.isfile(MPS_PATH):
+        print(f"ERROR: required data file missing: {MPS_PATH}", flush=True)
+        return 1
+
+    os.makedirs(ARTIFACT_DIR, exist_ok=True)
+
+    # ---- 1. Preparation (RRQR + Phase I -> prepared artifacts) ----
+    _run_stage("preparation", PREPARE)
+    for _f in (PREPARED_NPZ, PREPARED_A_NPZ):
+        if not os.path.isfile(_f):
+            print(f"ERROR: preparation did not produce expected artifact: {_f}",
+                  flush=True)
+            return 1
+
+    # ---- 2. Phase II (Devex Revised Simplex -> terminal basis) ----
+    _run_stage("phase II", PHASE2)
+    if not os.path.isfile(PHASE2_FINAL_NPZ):
+        print(f"ERROR: Phase II did not produce expected artifact: "
+              f"{PHASE2_FINAL_NPZ}", flush=True)
+        return 1
+
+    # ---- 3. Strict polish (-> polished solution) ----
+    _run_stage("strict polish", POLISH)
+    if not os.path.isfile(POLISHED_NPZ):
+        print(f"ERROR: strict polish did not produce expected artifact: "
+              f"{POLISHED_NPZ}", flush=True)
+        return 1
+
+    # ---- 4. Certification (reads polished solution, prints verdict) ----
+    _run_stage("certification", CERTIFY)
+
+    print(f"\nCertificate location: {CERTIFY}", flush=True)
+    print(f"Polished artifact:    {POLISHED_NPZ}", flush=True)
+    print("Pipeline completed.", flush=True)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
