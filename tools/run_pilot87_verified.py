@@ -8,11 +8,14 @@ only invokes the existing, validated stage scripts in sequence:
   -> artifacts/pilot87/p87_prepared.npz            (preparation)
   -> artifacts/pilot87/p87_phase2_v2_final.npz     (Phase II)
   -> artifacts/pilot87/p87_strict_polished.npz     (strict polish)
-  -> certificate emission                           (certification)
+  -> artifacts/pilot87/p87_strict_certificate.txt  (certification)
 
 All generated artifacts live under artifacts/pilot87/ (canonical location).
 There is no scratch/ handoff: each stage reads exactly what the previous
-stage wrote, directly from the canonical artifact directory.
+stage wrote, directly from the canonical artifact directory.  The final
+certificate stage captures the certification script's report into
+p87_strict_certificate.txt, which is verified to exist before the pipeline
+is considered complete.
 
 Usage:
     OPENBLAS_NUM_THREADS=1 python tools/run_pilot87_verified.py
@@ -42,6 +45,7 @@ PREPARED_NPZ = os.path.join(ARTIFACT_DIR, "p87_prepared.npz")
 PREPARED_A_NPZ = os.path.join(ARTIFACT_DIR, "p87_prepared_A.npz")
 PHASE2_FINAL_NPZ = os.path.join(ARTIFACT_DIR, "p87_phase2_v2_final.npz")
 POLISHED_NPZ = os.path.join(ARTIFACT_DIR, "p87_strict_polished.npz")
+CERT_FILE = os.path.join(ARTIFACT_DIR, "p87_strict_certificate.txt")
 
 
 def _run_stage(label: str, script: str, *args: str) -> int:
@@ -86,11 +90,38 @@ def main() -> int:
               f"{POLISHED_NPZ}", flush=True)
         return 1
 
-    # ---- 4. Certification (reads polished solution, prints verdict) ----
-    _run_stage("certification", CERTIFY)
+    # ---- 4. Certification (captures printed report -> strict certificate file) ----
+    print(f"\n===== STAGE: certification =====", flush=True)
+    cert_cmd = [sys.executable, "-u", CERTIFY]
+    with open(CERT_FILE, "w", encoding="utf-8") as _cert_out:
+        proc = subprocess.Popen(
+            cert_cmd, env=STAGE_ENV,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, bufsize=1,
+        )
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            # Mirror to console and into the certificate file simultaneously.
+            sys.stdout.write(line)
+            sys.stdout.flush()
+            _cert_out.write(line)
+        rc = proc.wait()
+    if rc != 0:
+        print(f"\n[FAILED] Stage 'certification' exited with code {rc}. "
+              f"Pipeline aborted.", flush=True)
+        sys.exit(rc)
+    print(f"[OK] Stage 'certification' completed (exit 0).", flush=True)
+    if not os.path.isfile(CERT_FILE):
+        print(f"ERROR: certification did not produce expected artifact: "
+              f"{CERT_FILE}", flush=True)
+        return 1
+    # Empty certificate file means no report was captured — treat as missing.
+    if os.path.getsize(CERT_FILE) == 0:
+        print(f"ERROR: certificate file is empty: {CERT_FILE}", flush=True)
+        return 1
 
-    print(f"\nCertificate location: {CERTIFY}", flush=True)
-    print(f"Polished artifact:    {POLISHED_NPZ}", flush=True)
+    print(f"\nCertificate:       {CERT_FILE}", flush=True)
+    print(f"Polished artifact: {POLISHED_NPZ}", flush=True)
     print("Pipeline completed.", flush=True)
     return 0
 
