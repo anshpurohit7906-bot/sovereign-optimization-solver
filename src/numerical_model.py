@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 import numpy as np
+import scipy.sparse as sp
 
 from mps_parser import LPModel, MPSParser
 
@@ -17,11 +18,16 @@ class NumericalModelError(ValueError):
 
 @dataclass(frozen=True)
 class NumericalLP:
-    """Dense numerical representation used for the first CPU experiments."""
+    """Numerical representation used for the CPU experiments.
+
+    ``A`` may be a dense ``np.ndarray`` (the default path) **or** a
+    ``scipy.sparse.csr_matrix`` / ``scipy.sparse.csc_matrix`` when the
+    caller opts into sparse loading via ``load_numeric_mps(path, sparse=True)``.
+    """
 
     name: str
     objective_name: str
-    A: np.ndarray
+    A: Union[np.ndarray, sp.csr_matrix, sp.csc_matrix]
     b: np.ndarray
     c: np.ndarray
     lower_bounds: np.ndarray
@@ -40,7 +46,66 @@ class NumericalLP:
 
     @property
     def nnz(self) -> int:
+        if sp.issparse(self.A):
+            return int(self.A.nnz)
         return int(np.count_nonzero(self.A))
+
+
+def to_sparse_numeric(model: LPModel) -> NumericalLP:
+    """Convert a parsed LPModel to a ``NumericalLP`` with a **sparse** CSR matrix.
+
+    The sparse matrix is assembled directly from ``model.coeffs`` without
+    ever materialising a full m×n dense array.
+    """
+    m = model.num_constraints()
+    n = model.num_vars()
+
+    if len(model.rhs) != m:
+        raise NumericalModelError(f"RHS length {len(model.rhs)} != constraints {m}")
+    if len(model.obj) != n:
+        raise NumericalModelError(f"objective length {len(model.obj)} != variables {n}")
+    if len(model.bounds_lb) != n or len(model.bounds_ub) != n:
+        raise NumericalModelError("bound arrays do not match variable count")
+    if len(model.row_types) != m:
+        raise NumericalModelError(f"row_types length {len(model.row_types)} != constraints {m}")
+
+    # Build CSR directly from COO-style data — no dense intermediate.
+    if model.coeffs:
+        rows, cols, vals = zip(*((r, c, v) for (c, r), v in model.coeffs.items()))
+        rows = list(rows)
+        cols = list(cols)
+        vals = list(vals)
+    else:
+        rows, cols, vals = [], [], []
+
+    A = sp.csr_matrix((np.asarray(vals, dtype=np.float64),
+                        (rows, cols)),
+                       shape=(m, n))
+
+    b = np.asarray(model.rhs, dtype=np.float64)
+    c = np.asarray(model.obj, dtype=np.float64)
+    lower = np.asarray(model.bounds_lb, dtype=np.float64)
+    upper = np.asarray(model.bounds_ub, dtype=np.float64)
+
+    if not np.all(np.isfinite(c)):
+        raise NumericalModelError("objective contains non-finite values")
+    if not np.all(np.isfinite(b)):
+        raise NumericalModelError("RHS contains non-finite values")
+    if np.any(lower > upper):
+        raise NumericalModelError("at least one lower bound exceeds its upper bound")
+
+    return NumericalLP(
+        name=model.name,
+        objective_name=model.objective_name,
+        A=A,
+        b=b,
+        c=c,
+        lower_bounds=lower,
+        upper_bounds=upper,
+        row_types=tuple(model.row_types),
+        var_names=tuple(model.var_names),
+        row_names=tuple(model.row_names),
+    )
 
 
 def to_numeric(model: LPModel) -> NumericalLP:
@@ -141,9 +206,22 @@ def validate_numeric_lp(lp: NumericalLP, *, expected: Optional[dict] = None) -> 
                 raise NumericalModelError("expected all upper bounds to be +inf")
 
 
-def load_numeric_mps(path: str | Path) -> NumericalLP:
-    """Parse an MPS file and convert it to a numerical LP."""
+def load_numeric_mps(path: str | Path, *, sparse: bool = False) -> NumericalLP:
+    """Parse an MPS file and convert it to a numerical LP.
+
+    Parameters
+    ----------
+    path : str or Path
+        Path to the MPS file.
+    sparse : bool, optional
+        If ``True`` the constraint matrix ``A`` is returned as a
+        ``scipy.sparse.csr_matrix`` (no full m×n dense array is ever
+        allocated).  Default is ``False`` (dense ``np.ndarray``), which
+        preserves the original behaviour exactly.
+    """
     model = MPSParser().parse_file(str(path))
+    if sparse:
+        return to_sparse_numeric(model)
     return to_numeric(model)
 
 
