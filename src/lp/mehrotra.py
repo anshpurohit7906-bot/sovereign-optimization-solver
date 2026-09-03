@@ -81,6 +81,7 @@ from typing import Optional, Union
 
 import numpy as np
 import scipy.sparse as sp
+from scipy.sparse.linalg import lsqr
 
 # ---------------------------------------------------------------------------
 # Imports.  The project uses a flat layout: ``linear_system`` lives beside
@@ -449,16 +450,139 @@ def _shift_positive(v: np.ndarray) -> np.ndarray:
     return v2 + d2
 
 
-def _mehrotra_initial_point(A: np.ndarray, b: np.ndarray, c: np.ndarray
+def _mehrotra_initial_point(A, b: np.ndarray, c: np.ndarray,
+                            *,
+                            lsqr_atol: float = 1e-9,
+                            lsqr_btol: float = 1e-9,
+                            lsqr_conlim: float = 1e12,
+                            lsqr_iter_lim: int = 500,
+                            dense_size_limit: int = 5000
                             ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Mehrotra's starting heuristic, strictly positive in x and z.
 
-    x0: minimum-norm solution of A x = b (least squares), shifted positive.
-    y0: least-squares solution of A^T y ~= c; z0 = c - A^T y, shifted positive.
+    Supports both dense np.ndarray and scipy.sparse matrices for A.
+    The dense path uses ``np.linalg.lstsq`` directly.  The sparse path
+    uses ``scipy.sparse.linalg.lsqr`` (an iterative LSQR solver) which
+    avoids explicitly forming the Gram matrix ``A^T A`` or ``A A^T`` —
+    LSQR operates on the original matrix and therefore does not square
+    the condition number.  Note that LSQR still operates on the spectrum
+    of the normal-equation operator implicitly; this comment does not
+    claim elimination of all conditioning effects, only that the explicit
+    Gram matrix is never materialised.
+
+    Parameters
+    ----------
+    A : np.ndarray or spmatrix
+        Constraint matrix (m x n).
+    b : np.ndarray
+        Right-hand side vector (m,).
+    c : np.ndarray
+        Objective vector (n,).
+    lsqr_atol, lsqr_btol : float
+        LSQR stopping tolerances (default 1e-9).  These are conservative;
+        LSQR is only an initializer and does not need to satisfy the
+        solver's final tolerance.
+    lsqr_conlim : float
+        LSQR condition-number limit (default 1e12).  If the estimated
+        condition number exceeds this, LSQR is considered to have stopped
+        for conditioning reasons.
+    lsqr_iter_lim : int
+        Maximum LSQR iterations (default 500).  For very large sparse
+        matrices this avoids unbounded iteration; the result is still
+        validated for finiteness.
+    dense_size_limit : int
+        Maximum number of dense entries (m × n) below which a sparse
+        matrix may be safely densified for the fallback path (default
+        5000).  A huge-shape sparse matrix with few NNZ will NOT be
+        densified because the dense allocation would be large.  Only
+        when the *shape* product m × n is at most this limit is
+        densifying considered safe.
     """
-    x = np.linalg.lstsq(A, b, rcond=None)[0]
-    y = np.linalg.lstsq(A.T, c, rcond=None)[0]
-    z = c - A.T @ y
+    m, n = A.shape
+
+    # ---- Dense path (unchanged) ----
+    if not sp.issparse(A):
+        x = np.linalg.lstsq(A, b, rcond=None)[0]
+        y = np.linalg.lstsq(A.T, c, rcond=None)[0]
+        z = c - A.T @ y
+        return _shift_positive(x), y, _shift_positive(z)
+
+    # ---- Sparse path ----
+    # Use LSQR to solve A @ x ~= b without forming A^T A.
+    # LSQR is backward-stable for least-squares problems.
+    # We do NOT explicitly form A^T @ A or A @ A^T — LSQR uses only
+    # matrix-vector products with A and A^T, which preserves sparsity.
+
+    def _solve_lsqr(M, rhs, expected_cols):
+        """Solve M @ x ~= rhs using LSQR, returning (x, is_usable).
+
+        Parameters
+        ----------
+        M : sparse matrix
+        rhs : dense vector
+        expected_cols : int
+            Expected length of the solution vector (= M.shape[1]).
+        """
+        try:
+            result = lsqr(M, rhs, atol=lsqr_atol, btol=lsqr_btol,
+                          conlim=lsqr_conlim, iter_lim=lsqr_iter_lim)
+            x_lsqr = result[0]
+
+            # Accept if the solution is finite and usable.
+            # Do NOT reject solely because LSQR stopped due to iteration
+            # limit or conditioning (instruction 10).
+            if (x_lsqr.shape == (expected_cols,)
+                    and np.all(np.isfinite(x_lsqr))
+                    and np.isfinite(np.dot(x_lsqr, x_lsqr))):
+                return x_lsqr, True
+            return x_lsqr, False
+        except Exception:
+            return np.zeros(expected_cols), False
+
+    # Solve for x: A @ x ~= b  (A is m×n, so x is (n,))
+    x, x_ok = _solve_lsqr(A, b, expected_cols=n)
+
+    # Solve for y: A.T @ y ~= c  (A.T is n×m, so y is (m,))
+    y, y_ok = _solve_lsqr(A.T, c, expected_cols=m)
+
+    # ---- Fallback if LSQR returned unusable results ----
+    if not (x_ok and y_ok and np.all(np.isfinite(x))
+            and np.all(np.isfinite(y))):
+        # Fallback A: dense allocation is small enough — densify + dense lstsq
+        if m * n <= dense_size_limit:
+            A_dense = A.toarray()
+            x = np.linalg.lstsq(A_dense, b, rcond=None)[0]
+            y = np.linalg.lstsq(A_dense.T, c, rcond=None)[0]
+            z = c - A_dense.T @ y
+        else:
+            # Fallback B: large sparse - trivial initializer
+            # x = ones(n), y = zeros(m), z = c - A^T @ y = c
+            x = np.ones(n)
+            y = np.zeros(m)
+            z = c.copy()
+    else:
+        # x and y are finite and usable — compute z = c - A^T @ y
+        z = c - A.T @ y
+        if not np.all(np.isfinite(z)):
+            # z computation produced non-finite values; retry fallback
+            if m * n <= dense_size_limit:
+                A_dense = A.toarray()
+                x = np.linalg.lstsq(A_dense, b, rcond=None)[0]
+                y = np.linalg.lstsq(A_dense.T, c, rcond=None)[0]
+                z = c - A_dense.T @ y
+            else:
+                x = np.ones(n)
+                y = np.zeros(m)
+                z = c.copy()
+
+    # Final validation: ensure all vectors are finite
+    if not (np.all(np.isfinite(x)) and np.all(np.isfinite(y))
+            and np.all(np.isfinite(z))):
+        # Last-resort safety net: return trivial finite values
+        x = np.ones(n)
+        y = np.zeros(m)
+        z = c.copy()
+
     return _shift_positive(x), y, _shift_positive(z)
 
 
