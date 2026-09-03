@@ -77,9 +77,10 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Union
 
 import numpy as np
+import scipy.sparse as sp
 
 # ---------------------------------------------------------------------------
 # Imports.  The project uses a flat layout: ``linear_system`` lives beside
@@ -142,7 +143,7 @@ class StandardFormLP:
         the extended rows (original rows, then box upper-bound rows).
     """
 
-    A: np.ndarray
+    A: Union[np.ndarray, sp.csr_matrix, sp.csc_matrix]
     b: np.ndarray
     c_min: np.ndarray
     c_orig: np.ndarray
@@ -205,9 +206,14 @@ def to_standard_form(lp: NumericalLP, *, maximize: bool = False) -> StandardForm
     explicitly to maximize ``c_orig @ x``.
     """
     m, n = lp.A.shape
+    is_sparse = sp.issparse(lp.A)
     if len(lp.row_types) != m:
         raise MehrotraError("row_types length does not match A")
-    if not np.all(np.isfinite(lp.A)):
+    # Sparse: only inspect the explicitly stored entries (``A.data``) rather
+    # than coercing the whole matrix to dense.  Implicit zeros are finite by
+    # definition, so this exactly matches the dense ``np.isfinite(lp.A)``.
+    A_entries = lp.A.data if is_sparse else lp.A
+    if not np.all(np.isfinite(A_entries)):
         raise MehrotraError("A contains non-finite entries")
     if not np.all(np.isfinite(lp.b)):
         raise MehrotraError("b contains non-finite entries")
@@ -260,7 +266,18 @@ def to_standard_form(lp: NumericalLP, *, maximize: bool = False) -> StandardForm
 
     # Transformed constraint columns: FR splits duplicate their original
     # column with +/- signs; reflected UP columns negate it.
-    A_block = lp.A[:, block_to_orig] * block_sign[None, :]
+    if is_sparse:
+        # Column-reorder the sparse matrix (returns a sparse matrix, no dense
+        # intermediate), then scale each stored entry by the sign of the
+        # standard-form column it belongs to.  ``A_block.indices`` are column
+        # indices into ``A_block``, so ``block_sign[A_block.indices]`` gives
+        # the per-entry multiplier directly in O(nnz).
+        A_block = lp.A[:, block_to_orig]
+        if block_sign.size:
+            A_block = A_block.copy()
+            A_block.data *= block_sign[A_block.indices]
+    else:
+        A_block = lp.A[:, block_to_orig] * block_sign[None, :]
     # The RHS absorbs every constant term of the transformation (LO shifts,
     # UP reflections, and the fixed values of substituted FX columns).
     b_std = lp.b.astype(np.float64) - lp.A @ orig_offset
@@ -280,11 +297,19 @@ def to_standard_form(lp: NumericalLP, *, maximize: bool = False) -> StandardForm
     num_slacks = len(slack_rows)
 
     if num_slacks:
-        slack_cols = np.eye(m_std)[:, list(slack_rows)]
         signs = np.array([1.0 if std_row_types[i] == "L" else -1.0
                           for i in slack_rows])
-        slack_cols = slack_cols * signs
-        A_std = np.hstack([A_block, slack_cols[:m]])
+        if is_sparse:
+            # Sparse slack columns: an (m_std x num_slacks) identity slice
+            # (unit entry on each inequality row) scaled by the row's sign.
+            slack_cols = sp.eye(m_std, format="csr")[:, list(slack_rows)]
+            slack_cols = slack_cols.copy()
+            slack_cols.data *= signs[slack_cols.indices]
+            A_std = sp.hstack([A_block, slack_cols[:m]], format="csr")
+        else:
+            slack_cols = np.eye(m_std)[:, list(slack_rows)]
+            slack_cols = slack_cols * signs
+            A_std = np.hstack([A_block, slack_cols[:m]])
     else:
         A_std = A_block
 
@@ -294,16 +319,41 @@ def to_standard_form(lp: NumericalLP, *, maximize: bool = False) -> StandardForm
         # the last n_extra slack columns, in the same order.
         col_of = np.full(n, -1, dtype=np.intp)
         col_of[single_idx] = np.arange(single_idx.size)
-        A_bottom = np.zeros((n_extra, n_block + num_slacks))
-        A_bottom[np.arange(n_extra), col_of[box_idx]] = 1.0
-        A_bottom[np.arange(n_extra),
-                 n_block + num_slacks - n_extra + np.arange(n_extra)] = 1.0
-        A_std = np.vstack([A_std, A_bottom])
+        # Two +1 entries per box row: one in the shifted variable's block
+        # column and one in that row's slack column (the last n_extra slack
+        # columns, in the same order as the box rows).
+        box_row = np.arange(n_extra, dtype=np.intp)
+        A_bottom_cols = np.concatenate(
+            [col_of[box_idx], n_block + num_slacks - n_extra + box_row]
+        )
+        if is_sparse:
+            # Build the box block directly as a sparse (COO) matrix with
+            # exactly 2*n_extra nonzeros, never a dense (n_extra x
+            # (n_block + num_slacks)) allocation.
+            A_bottom = sp.coo_matrix(
+                (np.ones(2 * n_extra), (np.tile(box_row, 2), A_bottom_cols)),
+                shape=(n_extra, n_block + num_slacks),
+                dtype=np.float64,
+            )
+            A_std = sp.vstack([A_std, A_bottom], format="csr")
+        else:
+            A_bottom = np.zeros((n_extra, n_block + num_slacks))
+            A_bottom[box_row, col_of[box_idx]] = 1.0
+            A_bottom[box_row, n_block + num_slacks - n_extra + box_row] = 1.0
+            A_std = np.vstack([A_std, A_bottom])
         b_std = np.concatenate(
             [b_std, (ub[box_idx] - lb[box_idx]).astype(np.float64)]
         )
 
-    zero_rows = np.flatnonzero(np.abs(A_std).sum(axis=1) == 0.0)
+    if is_sparse:
+        # Sparse zero-row detection: per-row sums over the stored entries;
+        # ``sum(axis=1)`` on a sparse matrix returns a sparse matrix, so
+        # materialise the (m_std,) dense vector count with ``toarray().ravel()``.
+        # This inspects only the nonzeros, never a full dense m x n copy.
+        row_sums = np.asarray(np.abs(A_std).sum(axis=1)).ravel()
+    else:
+        row_sums = np.abs(A_std).sum(axis=1)
+    zero_rows = np.flatnonzero(row_sums == 0.0)
     if zero_rows.size:
         name = std_row_names[int(zero_rows[0])]
         raise MehrotraError(
@@ -311,7 +361,9 @@ def to_standard_form(lp: NumericalLP, *, maximize: bool = False) -> StandardForm
         )
     # A system with zero rows is trivially full row rank; matrix_rank on an
     # empty SVD would raise, so only run the check when rows exist.
-    if m_std > 0 and np.linalg.matrix_rank(A_std) < m_std:
+    # ``matrix_rank`` only supports dense input, so it is skipped for sparse
+    # standard forms in this phase (no replacement rank algorithm yet).
+    if not is_sparse and m_std > 0 and np.linalg.matrix_rank(A_std) < m_std:
         raise MehrotraError(
             "standard-form constraint matrix is rank deficient; "
             "the Schur complement A H^-1 A^T would be singular"
