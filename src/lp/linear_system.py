@@ -98,7 +98,8 @@ def _splu_regularized(S: sp.csr_matrix, base_reg: float
     reg = base_reg * scale
     for _ in range(8):
         try:
-            return splu(M + sp.eye(M.shape[0], format="csc") * reg), reg
+            return splu(M + sp.eye(M.shape[0], format="csc") * reg,
+                        permc_spec="MMD_AT_PLUS_A"), reg
         except RuntimeError:
             reg *= 10.0
     raise LinearSystemError("Sparse factorization failed even with regularization")
