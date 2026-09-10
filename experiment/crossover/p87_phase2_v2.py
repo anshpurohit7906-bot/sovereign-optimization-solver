@@ -551,8 +551,16 @@ def main():
             if is_degen:
                 devex_degen += 1
 
-        # ---- PERIODIC EFF_TOL UPDATE ----
-        if iters_since_eff_tol >= RECOMPUTE_EFF_TOL:
+        # ---- PERIODIC EFF_TOL UPDATE (lazy) ----
+        # Only recompute when the feasibility gate is active (neg_count > 0).
+        # When neg_count == 0 the gate always takes no_action regardless of
+        # eff_tol, so recomputing is pure waste.  Skipping here is exact:
+        # the gate's own recompute (guarded by the SAME iters_since_eff_tol
+        # counter) refreshes eff_tol the moment a negative basic reappears,
+        # because the counter keeps growing while the periodic update is
+        # skipped.  This preserves the exact dense cond2 calculation and the
+        # exact gate decisions whenever there is anything to gate.
+        if iters_since_eff_tol >= RECOMPUTE_EFF_TOL and neg_count > 0:
             eff_tol, kappa = compute_effective_tol(B, b_norm)
             iters_since_eff_tol = 0
 

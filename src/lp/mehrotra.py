@@ -77,9 +77,11 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Union
 
 import numpy as np
+import scipy.sparse as sp
+from scipy.sparse.linalg import lsqr
 
 # ---------------------------------------------------------------------------
 # Imports.  The project uses a flat layout: ``linear_system`` lives beside
@@ -142,7 +144,7 @@ class StandardFormLP:
         the extended rows (original rows, then box upper-bound rows).
     """
 
-    A: np.ndarray
+    A: Union[np.ndarray, sp.csr_matrix, sp.csc_matrix]
     b: np.ndarray
     c_min: np.ndarray
     c_orig: np.ndarray
@@ -205,9 +207,14 @@ def to_standard_form(lp: NumericalLP, *, maximize: bool = False) -> StandardForm
     explicitly to maximize ``c_orig @ x``.
     """
     m, n = lp.A.shape
+    is_sparse = sp.issparse(lp.A)
     if len(lp.row_types) != m:
         raise MehrotraError("row_types length does not match A")
-    if not np.all(np.isfinite(lp.A)):
+    # Sparse: only inspect the explicitly stored entries (``A.data``) rather
+    # than coercing the whole matrix to dense.  Implicit zeros are finite by
+    # definition, so this exactly matches the dense ``np.isfinite(lp.A)``.
+    A_entries = lp.A.data if is_sparse else lp.A
+    if not np.all(np.isfinite(A_entries)):
         raise MehrotraError("A contains non-finite entries")
     if not np.all(np.isfinite(lp.b)):
         raise MehrotraError("b contains non-finite entries")
@@ -260,7 +267,18 @@ def to_standard_form(lp: NumericalLP, *, maximize: bool = False) -> StandardForm
 
     # Transformed constraint columns: FR splits duplicate their original
     # column with +/- signs; reflected UP columns negate it.
-    A_block = lp.A[:, block_to_orig] * block_sign[None, :]
+    if is_sparse:
+        # Column-reorder the sparse matrix (returns a sparse matrix, no dense
+        # intermediate), then scale each stored entry by the sign of the
+        # standard-form column it belongs to.  ``A_block.indices`` are column
+        # indices into ``A_block``, so ``block_sign[A_block.indices]`` gives
+        # the per-entry multiplier directly in O(nnz).
+        A_block = lp.A[:, block_to_orig]
+        if block_sign.size:
+            A_block = A_block.copy()
+            A_block.data *= block_sign[A_block.indices]
+    else:
+        A_block = lp.A[:, block_to_orig] * block_sign[None, :]
     # The RHS absorbs every constant term of the transformation (LO shifts,
     # UP reflections, and the fixed values of substituted FX columns).
     b_std = lp.b.astype(np.float64) - lp.A @ orig_offset
@@ -280,11 +298,19 @@ def to_standard_form(lp: NumericalLP, *, maximize: bool = False) -> StandardForm
     num_slacks = len(slack_rows)
 
     if num_slacks:
-        slack_cols = np.eye(m_std)[:, list(slack_rows)]
         signs = np.array([1.0 if std_row_types[i] == "L" else -1.0
                           for i in slack_rows])
-        slack_cols = slack_cols * signs
-        A_std = np.hstack([A_block, slack_cols[:m]])
+        if is_sparse:
+            # Sparse slack columns: an (m_std x num_slacks) identity slice
+            # (unit entry on each inequality row) scaled by the row's sign.
+            slack_cols = sp.eye(m_std, format="csr")[:, list(slack_rows)]
+            slack_cols = slack_cols.copy()
+            slack_cols.data *= signs[slack_cols.indices]
+            A_std = sp.hstack([A_block, slack_cols[:m]], format="csr")
+        else:
+            slack_cols = np.eye(m_std)[:, list(slack_rows)]
+            slack_cols = slack_cols * signs
+            A_std = np.hstack([A_block, slack_cols[:m]])
     else:
         A_std = A_block
 
@@ -294,16 +320,41 @@ def to_standard_form(lp: NumericalLP, *, maximize: bool = False) -> StandardForm
         # the last n_extra slack columns, in the same order.
         col_of = np.full(n, -1, dtype=np.intp)
         col_of[single_idx] = np.arange(single_idx.size)
-        A_bottom = np.zeros((n_extra, n_block + num_slacks))
-        A_bottom[np.arange(n_extra), col_of[box_idx]] = 1.0
-        A_bottom[np.arange(n_extra),
-                 n_block + num_slacks - n_extra + np.arange(n_extra)] = 1.0
-        A_std = np.vstack([A_std, A_bottom])
+        # Two +1 entries per box row: one in the shifted variable's block
+        # column and one in that row's slack column (the last n_extra slack
+        # columns, in the same order as the box rows).
+        box_row = np.arange(n_extra, dtype=np.intp)
+        A_bottom_cols = np.concatenate(
+            [col_of[box_idx], n_block + num_slacks - n_extra + box_row]
+        )
+        if is_sparse:
+            # Build the box block directly as a sparse (COO) matrix with
+            # exactly 2*n_extra nonzeros, never a dense (n_extra x
+            # (n_block + num_slacks)) allocation.
+            A_bottom = sp.coo_matrix(
+                (np.ones(2 * n_extra), (np.tile(box_row, 2), A_bottom_cols)),
+                shape=(n_extra, n_block + num_slacks),
+                dtype=np.float64,
+            )
+            A_std = sp.vstack([A_std, A_bottom], format="csr")
+        else:
+            A_bottom = np.zeros((n_extra, n_block + num_slacks))
+            A_bottom[box_row, col_of[box_idx]] = 1.0
+            A_bottom[box_row, n_block + num_slacks - n_extra + box_row] = 1.0
+            A_std = np.vstack([A_std, A_bottom])
         b_std = np.concatenate(
             [b_std, (ub[box_idx] - lb[box_idx]).astype(np.float64)]
         )
 
-    zero_rows = np.flatnonzero(np.abs(A_std).sum(axis=1) == 0.0)
+    if is_sparse:
+        # Sparse zero-row detection: per-row sums over the stored entries;
+        # ``sum(axis=1)`` on a sparse matrix returns a sparse matrix, so
+        # materialise the (m_std,) dense vector count with ``toarray().ravel()``.
+        # This inspects only the nonzeros, never a full dense m x n copy.
+        row_sums = np.asarray(np.abs(A_std).sum(axis=1)).ravel()
+    else:
+        row_sums = np.abs(A_std).sum(axis=1)
+    zero_rows = np.flatnonzero(row_sums == 0.0)
     if zero_rows.size:
         name = std_row_names[int(zero_rows[0])]
         raise MehrotraError(
@@ -311,7 +362,9 @@ def to_standard_form(lp: NumericalLP, *, maximize: bool = False) -> StandardForm
         )
     # A system with zero rows is trivially full row rank; matrix_rank on an
     # empty SVD would raise, so only run the check when rows exist.
-    if m_std > 0 and np.linalg.matrix_rank(A_std) < m_std:
+    # ``matrix_rank`` only supports dense input, so it is skipped for sparse
+    # standard forms in this phase (no replacement rank algorithm yet).
+    if not is_sparse and m_std > 0 and np.linalg.matrix_rank(A_std) < m_std:
         raise MehrotraError(
             "standard-form constraint matrix is rank deficient; "
             "the Schur complement A H^-1 A^T would be singular"
@@ -397,16 +450,139 @@ def _shift_positive(v: np.ndarray) -> np.ndarray:
     return v2 + d2
 
 
-def _mehrotra_initial_point(A: np.ndarray, b: np.ndarray, c: np.ndarray
+def _mehrotra_initial_point(A, b: np.ndarray, c: np.ndarray,
+                            *,
+                            lsqr_atol: float = 1e-9,
+                            lsqr_btol: float = 1e-9,
+                            lsqr_conlim: float = 1e12,
+                            lsqr_iter_lim: int = 500,
+                            dense_size_limit: int = 5000
                             ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Mehrotra's starting heuristic, strictly positive in x and z.
 
-    x0: minimum-norm solution of A x = b (least squares), shifted positive.
-    y0: least-squares solution of A^T y ~= c; z0 = c - A^T y, shifted positive.
+    Supports both dense np.ndarray and scipy.sparse matrices for A.
+    The dense path uses ``np.linalg.lstsq`` directly.  The sparse path
+    uses ``scipy.sparse.linalg.lsqr`` (an iterative LSQR solver) which
+    avoids explicitly forming the Gram matrix ``A^T A`` or ``A A^T`` —
+    LSQR operates on the original matrix and therefore does not square
+    the condition number.  Note that LSQR still operates on the spectrum
+    of the normal-equation operator implicitly; this comment does not
+    claim elimination of all conditioning effects, only that the explicit
+    Gram matrix is never materialised.
+
+    Parameters
+    ----------
+    A : np.ndarray or spmatrix
+        Constraint matrix (m x n).
+    b : np.ndarray
+        Right-hand side vector (m,).
+    c : np.ndarray
+        Objective vector (n,).
+    lsqr_atol, lsqr_btol : float
+        LSQR stopping tolerances (default 1e-9).  These are conservative;
+        LSQR is only an initializer and does not need to satisfy the
+        solver's final tolerance.
+    lsqr_conlim : float
+        LSQR condition-number limit (default 1e12).  If the estimated
+        condition number exceeds this, LSQR is considered to have stopped
+        for conditioning reasons.
+    lsqr_iter_lim : int
+        Maximum LSQR iterations (default 500).  For very large sparse
+        matrices this avoids unbounded iteration; the result is still
+        validated for finiteness.
+    dense_size_limit : int
+        Maximum number of dense entries (m × n) below which a sparse
+        matrix may be safely densified for the fallback path (default
+        5000).  A huge-shape sparse matrix with few NNZ will NOT be
+        densified because the dense allocation would be large.  Only
+        when the *shape* product m × n is at most this limit is
+        densifying considered safe.
     """
-    x = np.linalg.lstsq(A, b, rcond=None)[0]
-    y = np.linalg.lstsq(A.T, c, rcond=None)[0]
-    z = c - A.T @ y
+    m, n = A.shape
+
+    # ---- Dense path (unchanged) ----
+    if not sp.issparse(A):
+        x = np.linalg.lstsq(A, b, rcond=None)[0]
+        y = np.linalg.lstsq(A.T, c, rcond=None)[0]
+        z = c - A.T @ y
+        return _shift_positive(x), y, _shift_positive(z)
+
+    # ---- Sparse path ----
+    # Use LSQR to solve A @ x ~= b without forming A^T A.
+    # LSQR is backward-stable for least-squares problems.
+    # We do NOT explicitly form A^T @ A or A @ A^T — LSQR uses only
+    # matrix-vector products with A and A^T, which preserves sparsity.
+
+    def _solve_lsqr(M, rhs, expected_cols):
+        """Solve M @ x ~= rhs using LSQR, returning (x, is_usable).
+
+        Parameters
+        ----------
+        M : sparse matrix
+        rhs : dense vector
+        expected_cols : int
+            Expected length of the solution vector (= M.shape[1]).
+        """
+        try:
+            result = lsqr(M, rhs, atol=lsqr_atol, btol=lsqr_btol,
+                          conlim=lsqr_conlim, iter_lim=lsqr_iter_lim)
+            x_lsqr = result[0]
+
+            # Accept if the solution is finite and usable.
+            # Do NOT reject solely because LSQR stopped due to iteration
+            # limit or conditioning (instruction 10).
+            if (x_lsqr.shape == (expected_cols,)
+                    and np.all(np.isfinite(x_lsqr))
+                    and np.isfinite(np.dot(x_lsqr, x_lsqr))):
+                return x_lsqr, True
+            return x_lsqr, False
+        except Exception:
+            return np.zeros(expected_cols), False
+
+    # Solve for x: A @ x ~= b  (A is m×n, so x is (n,))
+    x, x_ok = _solve_lsqr(A, b, expected_cols=n)
+
+    # Solve for y: A.T @ y ~= c  (A.T is n×m, so y is (m,))
+    y, y_ok = _solve_lsqr(A.T, c, expected_cols=m)
+
+    # ---- Fallback if LSQR returned unusable results ----
+    if not (x_ok and y_ok and np.all(np.isfinite(x))
+            and np.all(np.isfinite(y))):
+        # Fallback A: dense allocation is small enough — densify + dense lstsq
+        if m * n <= dense_size_limit:
+            A_dense = A.toarray()
+            x = np.linalg.lstsq(A_dense, b, rcond=None)[0]
+            y = np.linalg.lstsq(A_dense.T, c, rcond=None)[0]
+            z = c - A_dense.T @ y
+        else:
+            # Fallback B: large sparse - trivial initializer
+            # x = ones(n), y = zeros(m), z = c - A^T @ y = c
+            x = np.ones(n)
+            y = np.zeros(m)
+            z = c.copy()
+    else:
+        # x and y are finite and usable — compute z = c - A^T @ y
+        z = c - A.T @ y
+        if not np.all(np.isfinite(z)):
+            # z computation produced non-finite values; retry fallback
+            if m * n <= dense_size_limit:
+                A_dense = A.toarray()
+                x = np.linalg.lstsq(A_dense, b, rcond=None)[0]
+                y = np.linalg.lstsq(A_dense.T, c, rcond=None)[0]
+                z = c - A_dense.T @ y
+            else:
+                x = np.ones(n)
+                y = np.zeros(m)
+                z = c.copy()
+
+    # Final validation: ensure all vectors are finite
+    if not (np.all(np.isfinite(x)) and np.all(np.isfinite(y))
+            and np.all(np.isfinite(z))):
+        # Last-resort safety net: return trivial finite values
+        x = np.ones(n)
+        y = np.zeros(m)
+        z = c.copy()
+
     return _shift_positive(x), y, _shift_positive(z)
 
 
@@ -424,6 +600,7 @@ def _max_step(v: np.ndarray, dv: np.ndarray) -> float:
 # ---------------------------------------------------------------------------
 def solve_standard_form(sf: StandardFormLP, *, tol: float = 1e-8, max_iter: int = 100,
                         tau: float = 0.995, mu_floor: float = 1e-12,
+                        crossover_fallback: bool = False,
                         verbose: bool = False) -> MehrotraResult:
     """Solve a ``StandardFormLP`` with Mehrotra's predictor-corrector method.
 
@@ -442,6 +619,13 @@ def solve_standard_form(sf: StandardFormLP, *, tol: float = 1e-8, max_iter: int 
         effective floor is ``mu_floor * max(1, ||b||_inf, ||c||_inf)``; once
         mu = x^T z / n reaches it, the trajectory is stopped instead of being
         driven deeper into the rounding-noise-dominated degenerate tail.
+    crossover_fallback : if True, attempt a sparse simplex crossover when the
+        IPM terminates in ``stalled`` or ``numerical_tail`` status.  The
+        crossover is only *triggered* when
+        ``best_merit <= CROSSOVER_MERIT_RATIO * tol`` (the IPM is already
+        near-optimal but cannot resolve the last dual residuals) and is only
+        *accepted* when all three of rel_primal, rel_dual, and rel_gap are
+        independently <= tol.
     verbose : print one progress line per iteration.
     """
     A, b, c = sf.A, sf.b, sf.c_min
@@ -751,6 +935,86 @@ def solve_standard_form(sf: StandardFormLP, *, tol: float = 1e-8, max_iter: int 
                 f"rel_gap={rel_gap:9.3e}  ap={a_p:6.4f}  ad={a_d:6.4f}  "
                 f"sigma={sigma:5.3f}  reg={'Y' if regularized else 'n'}"
             )
+
+    # ------------------------------------------------------------------
+    # Sparse crossover fallback: when the IPM terminates without full
+    # optimality (stalled / numerical_tail) AND the best merit is already
+    # within CROSSOVER_MERIT_RATIO of tol, attempt a full simplex
+    # crossover (all-artificial Phase I + Devex Phase II).  The crossover
+    # replaces the IPM iterate only when rel_primal/rel_dual/rel_gap are
+    # all independently <= tol.  The ratio only gates the expensive
+    # pre-execution trigger; acceptance never uses best_merit.
+    # ------------------------------------------------------------------
+    if crossover_fallback and status in ("stalled", "numerical_tail"):
+        try:
+            from crossover import crossover_from_ipm, CROSSOVER_MERIT_RATIO
+
+            # Pre-execution gate: skip crossover unless the IPM is already
+            # near-optimal.  This avoids running simplex on hopelessly
+            # infeasible stalled iterates.
+            fallback_candidate = (
+                crossover_fallback
+                and status in ("stalled", "numerical_tail")
+                and best_merit <= CROSSOVER_MERIT_RATIO * tol
+            )
+            if not fallback_candidate:
+                if verbose:
+                    print(f"  -> crossover skipped: best_merit={best_merit:.3e} "
+                          f"> CROSSOVER_MERIT_RATIO*tol="
+                          f"{CROSSOVER_MERIT_RATIO * tol:.3e}")
+            else:
+                if verbose:
+                    print(f"  -> attempting sparse crossover fallback "
+                          f"from status={status}")
+                cr = crossover_from_ipm(A, b, c,
+                                        verbose=500 if verbose else 0)
+                if cr.get("status") == "optimal":
+                    # Independently recompute original-coordinate residuals
+                    # and accept only if ALL three are <= tol.
+                    x_std_cr = unscale_solution(cr["x"], col_scale)
+                    y_orig_cr = row_scale * cr["y"]
+                    z_cr = c - A.T @ cr["y"]          # scaled dual slacks
+                    z_std_cr = z_cr / col_scale
+                    rel_p_cr = _inf_norm(sf.A @ x_std_cr - sf.b) / (1.0 + norm_b_orig)
+                    rel_d_cr = _inf_norm(sf.A.T @ y_orig_cr + z_std_cr - sf.c_min) / (1.0 + norm_c_orig)
+                    cx_cr = float(sf.c_min @ x_std_cr)
+                    by_cr = float(sf.b @ y_orig_cr)
+                    rel_gap_cr = abs(cx_cr - by_cr) / (1.0 + abs(cx_cr) + abs(by_cr))
+                    if rel_p_cr <= tol and rel_d_cr <= tol and rel_gap_cr <= tol:
+                        if verbose:
+                            print(f"  -> crossover ACCEPTED: "
+                                  f"rel_p={rel_p_cr:.3e}, rel_d={rel_d_cr:.3e}, "
+                                  f"rel_gap={rel_gap_cr:.3e} (all <= tol={tol:.3e})")
+                        x = cr["x"]
+                        y = cr["y"]
+                        z = z_cr
+                        prev_status = status
+                        status = "optimal"
+                        message = (
+                            f"sparse crossover from {prev_status}: "
+                            f"Phase I {cr['phase1']['iterations']} iters, "
+                            f"Phase II {cr['iterations']} pivots, "
+                            f"rel_p={rel_p_cr:.3e}, rel_d={rel_d_cr:.3e}, "
+                            f"rel_gap={rel_gap_cr:.3e}, "
+                            f"repairs={cr.get('repairs', 0)}, "
+                            f"soft_clamps={cr.get('soft_clamps', 0)}"
+                        )
+                    else:
+                        if verbose:
+                            print(f"  -> crossover REJECTED: "
+                                  f"rel_p={rel_p_cr:.3e}, rel_d={rel_d_cr:.3e}, "
+                                  f"rel_gap={rel_gap_cr:.3e} "
+                                  f"(any > tol={tol:.3e})")
+                else:
+                    if verbose:
+                        print(f"  -> crossover failed: status={cr.get('status')} "
+                              f"{cr.get('message', '')}")
+        except ImportError:
+            if verbose:
+                print("  -> crossover module not available; skipping fallback")
+        except Exception as exc:
+            if verbose:
+                print(f"  -> crossover exception: {exc}; skipping fallback")
 
     if verbose:
         print(f"  -> {status}: {message}")

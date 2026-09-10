@@ -1,0 +1,350 @@
+
+===== STAGE: preparation =====
+standard form: 3608 x 8038  load=0.17s  nnz=75,635
+scaling: col[1.000e+00..1.000e+03] row[1.000e-03..1.000e+00]
+  it 0: art_sum=221,209.7289 n_art=3608
+  it 2000: art_sum=213,332.4637 n_art=2373
+  it 4000: art_sum=191,714.9712 n_art=1426
+  it 6000: art_sum=142,333.1343 n_art=1003
+  it 8000: art_sum=74,853.2551 n_art=744
+  it 10000: art_sum=1,144.2149 n_art=69
+  it 12000: art_sum=55.0710 n_art=33
+  it 14000: art_sum=1.4481 n_art=7
+Phase I: iters=14628 status=feasible t=264.74s
+SAVED: C:\Users\anshp\OneDrive\SIH26119\artifacts\pilot87\p87_prepared.npz  basis_size=3608  total=264.94s
+[OK] Stage 'preparation' completed (exit 0).
+
+===== STAGE: phase II =====
+pricing=devex  budget=25000
+loaded: A=3608x8038 nnz=75635 basis=3608 ||b||_inf=16474.613
+start obj=433.195886379 min_xB=0.000e+00
+initial effective_tol=5.178e-06  cond2=2.831e+04
+devex weights: initialized n=150 med=1.001 max=12.781
+C:\Users\anshp\OneDrive\SIH26119\experiment\crossover\p87_phase2_v2.py:478: SparseEfficiencyWarning: splu converted its input to CSC format
+  lu_m = splu(Bcurr.tocsr(), permc_spec="COLAMD")
+LIVE it=     0 obj=433.195886 obj_delta=+0.000e+00 neg_rc=2654 min_rc=-2.264e+01 theta=6.405e-01 degen=0 repairs=0 soft=0
+LIVE it=   200 obj=346.613208 obj_delta=-1.936e-03 neg_rc=1355 min_rc=-1.826e+00 theta=5.651e-03 degen=0 repairs=0 soft=0
+LIVE it=   400 obj=345.357453 obj_delta=-1.447e-02 neg_rc=1377 min_rc=-4.043e+00 theta=3.229e-02 degen=0 repairs=0 soft=0
+LIVE it=   600 obj=340.769289 obj_delta=-2.061e-03 neg_rc=1255 min_rc=-7.178e+00 theta=7.203e-03 degen=0 repairs=0 soft=0
+LIVE it=   800 obj=337.731372 obj_delta=-1.289e-02 neg_rc=1448 min_rc=-1.145e+01 theta=1.051e-02 degen=0 repairs=0 soft=0
+LIVE it=  1000 obj=335.652109 obj_delta=-4.031e-03 neg_rc=1326 min_rc=-8.007e+00 theta=3.501e-02 degen=0 repairs=0 soft=0
+LIVE it=  1200 obj=333.961632 obj_delta=-9.500e-03 neg_rc=1261 min_rc=-6.233e-01 theta=2.308e-02 degen=0 repairs=0 soft=0
+LIVE it=  1400 obj=332.895701 obj_delta=-9.644e-03 neg_rc=1177 min_rc=-3.822e+00 theta=1.692e-01 degen=0 repairs=0 soft=0
+LIVE it=  1600 obj=331.162293 obj_delta=-3.098e-03 neg_rc=1490 min_rc=-2.929e+00 theta=1.674e-03 degen=0 repairs=0 soft=0
+LIVE it=  1800 obj=330.078724 obj_delta=-5.535e-04 neg_rc=1206 min_rc=-4.632e-01 theta=6.633e-01 degen=0 repairs=0 soft=0
+LIVE it=  2000 obj=328.759453 obj_delta=-5.979e-03 neg_rc=1457 min_rc=-3.585e+00 theta=1.075e-01 degen=0 repairs=0 soft=0
+LIVE it=  2200 obj=328.014042 obj_delta=-1.718e-02 neg_rc=1912 min_rc=-6.116e+00 theta=3.219e-04 degen=0 repairs=0 soft=0
+LIVE it=  2400 obj=327.133625 obj_delta=-2.945e-03 neg_rc=1363 min_rc=-4.115e+00 theta=9.635e-04 degen=0 repairs=0 soft=0
+LIVE it=  2600 obj=326.623310 obj_delta=-3.261e-03 neg_rc=1249 min_rc=-3.330e+00 theta=3.997e-02 degen=0 repairs=0 soft=0
+LIVE it=  2800 obj=325.555014 obj_delta=-2.812e-03 neg_rc=1129 min_rc=-1.088e+00 theta=1.953e-02 degen=0 repairs=0 soft=0
+LIVE it=  3000 obj=325.162549 obj_delta=-1.214e-02 neg_rc=1013 min_rc=-6.864e-01 theta=1.926e-01 degen=0 repairs=0 soft=0
+LIVE it=  3200 obj=323.811766 obj_delta=-1.554e-04 neg_rc=1166 min_rc=-4.004e-01 theta=5.793e-02 degen=0 repairs=0 soft=0
+LIVE it=  3400 obj=323.357994 obj_delta=-2.660e-04 neg_rc=1307 min_rc=-7.204e-01 theta=5.150e-02 degen=0 repairs=0 soft=0
+LIVE it=  3600 obj=322.574007 obj_delta=-1.709e-03 neg_rc=1001 min_rc=-5.036e-01 theta=4.521e-02 degen=0 repairs=0 soft=0
+LIVE it=  3800 obj=321.703868 obj_delta=-3.276e-03 neg_rc=995 min_rc=-5.751e-01 theta=2.767e-01 degen=0 repairs=0 soft=0
+LIVE it=  4000 obj=320.865213 obj_delta=-5.150e-04 neg_rc=905 min_rc=-9.770e-01 theta=1.339e+00 degen=0 repairs=0 soft=0
+LIVE it=  4200 obj=320.361858 obj_delta=-1.177e-03 neg_rc=872 min_rc=-3.578e-01 theta=1.097e+00 degen=0 repairs=0 soft=0
+LIVE it=  4400 obj=319.517732 obj_delta=-5.751e-04 neg_rc=903 min_rc=-3.843e-01 theta=5.780e+00 degen=0 repairs=0 soft=0
+LIVE it=  4600 obj=318.724959 obj_delta=-2.660e-04 neg_rc=1060 min_rc=-9.081e-01 theta=1.038e+00 degen=0 repairs=0 soft=0
+LIVE it=  4800 obj=318.204859 obj_delta=-1.395e-03 neg_rc=1045 min_rc=-2.939e-01 theta=1.039e-01 degen=0 repairs=0 soft=0
+LIVE it=  5000 obj=317.580075 obj_delta=-2.131e-04 neg_rc=1143 min_rc=-2.491e+00 theta=1.827e-04 degen=0 repairs=0 soft=0
+LIVE it=  5200 obj=317.083936 obj_delta=-5.499e-04 neg_rc=1053 min_rc=-5.768e-01 theta=2.199e-02 degen=0 repairs=0 soft=0
+LIVE it=  5400 obj=316.369483 obj_delta=-1.373e-03 neg_rc=905 min_rc=-2.163e-01 theta=4.719e-01 degen=0 repairs=0 soft=0
+LIVE it=  5600 obj=316.113886 obj_delta=-9.093e-05 neg_rc=1017 min_rc=-6.365e-01 theta=2.954e-03 degen=0 repairs=0 soft=0
+LIVE it=  5800 obj=315.558491 obj_delta=-3.298e-03 neg_rc=1102 min_rc=-3.009e+00 theta=4.429e-04 degen=0 repairs=0 soft=0
+LIVE it=  6000 obj=314.912769 obj_delta=-9.439e-06 neg_rc=1008 min_rc=-5.609e-01 theta=6.671e-02 degen=0 repairs=0 soft=0
+LIVE it=  6200 obj=314.365547 obj_delta=-1.169e-02 neg_rc=1163 min_rc=-5.060e+00 theta=7.094e-03 degen=0 repairs=0 soft=0
+LIVE it=  6400 obj=314.045307 obj_delta=-3.007e-03 neg_rc=1279 min_rc=-2.195e+00 theta=1.415e-01 degen=0 repairs=0 soft=0
+LIVE it=  6600 obj=313.571869 obj_delta=-2.792e-03 neg_rc=1551 min_rc=-4.338e+00 theta=8.261e-03 degen=0 repairs=0 soft=0
+LIVE it=  6800 obj=312.864155 obj_delta=-2.932e-04 neg_rc=953 min_rc=-1.876e-01 theta=4.861e-01 degen=0 repairs=0 soft=0
+LIVE it=  7000 obj=312.141120 obj_delta=-1.080e-04 neg_rc=994 min_rc=-5.432e-01 theta=1.524e-02 degen=0 repairs=0 soft=0
+LIVE it=  7200 obj=311.850164 obj_delta=-8.663e-04 neg_rc=930 min_rc=-1.598e-01 theta=5.232e-02 degen=0 repairs=0 soft=0
+LIVE it=  7400 obj=311.607018 obj_delta=-4.023e-04 neg_rc=975 min_rc=-4.812e-01 theta=3.364e-02 degen=0 repairs=0 soft=0
+LIVE it=  7600 obj=311.198789 obj_delta=-4.701e-04 neg_rc=927 min_rc=-1.586e-01 theta=3.116e+00 degen=0 repairs=0 soft=0
+LIVE it=  7800 obj=311.054119 obj_delta=-6.817e-04 neg_rc=1543 min_rc=-2.501e+00 theta=2.064e-02 degen=0 repairs=0 soft=0
+LIVE it=  8000 obj=310.683942 obj_delta=-8.414e-04 neg_rc=930 min_rc=-1.288e-01 theta=5.951e-03 degen=0 repairs=0 soft=0
+LIVE it=  8200 obj=310.314784 obj_delta=-2.540e-04 neg_rc=926 min_rc=-1.203e-01 theta=1.575e-02 degen=0 repairs=0 soft=0
+LIVE it=  8400 obj=309.797511 obj_delta=-2.589e-03 neg_rc=987 min_rc=-3.925e-01 theta=2.073e+00 degen=0 repairs=0 soft=0
+LIVE it=  8600 obj=309.480528 obj_delta=-9.410e-04 neg_rc=871 min_rc=-4.124e-01 theta=3.218e+00 degen=0 repairs=0 soft=0
+LIVE it=  8800 obj=309.162051 obj_delta=-4.702e-04 neg_rc=805 min_rc=-5.311e-01 theta=8.838e-03 degen=0 repairs=0 soft=0
+LIVE it=  9000 obj=308.762031 obj_delta=-1.458e-03 neg_rc=816 min_rc=-5.153e-01 theta=5.599e-03 degen=0 repairs=0 soft=0
+LIVE it=  9200 obj=308.390957 obj_delta=-2.424e-04 neg_rc=779 min_rc=-2.964e-01 theta=1.296e-02 degen=0 repairs=0 soft=0
+LIVE it=  9400 obj=308.161511 obj_delta=-3.692e-04 neg_rc=845 min_rc=-3.631e-01 theta=6.636e-02 degen=0 repairs=0 soft=0
+LIVE it=  9600 obj=307.958780 obj_delta=-3.587e-06 neg_rc=1179 min_rc=-3.345e+00 theta=3.107e-03 degen=0 repairs=0 soft=0
+LIVE it=  9800 obj=307.706798 obj_delta=-1.844e-05 neg_rc=790 min_rc=-6.310e-01 theta=8.571e-02 degen=0 repairs=0 soft=0
+LIVE it= 10000 obj=307.509513 obj_delta=-2.790e-03 neg_rc=806 min_rc=-1.252e-01 theta=1.976e-01 degen=0 repairs=0 soft=0
+LIVE it= 10200 obj=306.931911 obj_delta=-1.973e-03 neg_rc=874 min_rc=-3.742e-01 theta=9.329e-02 degen=0 repairs=0 soft=0
+LIVE it= 10400 obj=306.599122 obj_delta=-9.639e-04 neg_rc=824 min_rc=-2.958e-01 theta=2.074e-02 degen=0 repairs=0 soft=0
+LIVE it= 10600 obj=306.209389 obj_delta=-4.538e-03 neg_rc=694 min_rc=-1.240e-01 theta=1.961e+00 degen=0 repairs=0 soft=0
+LIVE it= 10800 obj=305.982503 obj_delta=-1.080e-12 neg_rc=720 min_rc=-2.009e-01 theta=1.880e-03 degen=0 repairs=0 soft=0
+LIVE it= 11000 obj=305.788571 obj_delta=-9.874e-04 neg_rc=635 min_rc=-7.981e-02 theta=6.326e-01 degen=0 repairs=0 soft=0
+LIVE it= 11200 obj=305.533403 obj_delta=-6.934e-05 neg_rc=626 min_rc=-9.971e-02 theta=4.735e-03 degen=0 repairs=0 soft=0
+LIVE it= 11400 obj=305.257077 obj_delta=-6.450e-05 neg_rc=619 min_rc=-7.711e-02 theta=1.827e-02 degen=0 repairs=0 soft=0
+LIVE it= 11600 obj=305.037784 obj_delta=-5.665e-04 neg_rc=621 min_rc=-7.585e-02 theta=3.386e+00 degen=0 repairs=0 soft=0
+LIVE it= 11800 obj=304.902687 obj_delta=-4.350e-04 neg_rc=616 min_rc=-7.297e-02 theta=1.740e-01 degen=0 repairs=0 soft=0
+LIVE it= 12000 obj=304.732918 obj_delta=-4.394e-05 neg_rc=606 min_rc=-2.530e-01 theta=8.157e-04 degen=0 repairs=0 soft=0
+LIVE it= 12200 obj=304.615083 obj_delta=-6.663e-04 neg_rc=1413 min_rc=-5.254e+00 theta=9.392e-05 degen=0 repairs=0 soft=0
+LIVE it= 12400 obj=304.542472 obj_delta=-4.173e-06 neg_rc=618 min_rc=-1.488e-01 theta=1.806e+00 degen=0 repairs=0 soft=0
+LIVE it= 12600 obj=304.413256 obj_delta=-1.104e-04 neg_rc=548 min_rc=-1.080e-01 theta=1.118e-03 degen=0 repairs=0 soft=0
+LIVE it= 12800 obj=304.278184 obj_delta=-1.181e-04 neg_rc=598 min_rc=-8.408e-02 theta=7.666e-01 degen=0 repairs=0 soft=0
+LIVE it= 13000 obj=304.217548 obj_delta=-2.001e-06 neg_rc=497 min_rc=-8.329e-02 theta=2.747e-02 degen=0 repairs=0 soft=0
+LIVE it= 13200 obj=304.162619 obj_delta=-4.523e-04 neg_rc=640 min_rc=-1.538e-01 theta=2.113e-03 degen=0 repairs=0 soft=0
+LIVE it= 13400 obj=304.069563 obj_delta=-3.421e-04 neg_rc=652 min_rc=-2.518e-01 theta=6.415e-04 degen=0 repairs=0 soft=0
+LIVE it= 13600 obj=303.956378 obj_delta=-1.065e-05 neg_rc=489 min_rc=-4.859e-02 theta=5.503e-02 degen=0 repairs=0 soft=0
+LIVE it= 13800 obj=303.882902 obj_delta=-5.700e-06 neg_rc=473 min_rc=-5.038e-02 theta=2.054e-03 degen=0 repairs=0 soft=0
+LIVE it= 14000 obj=303.756436 obj_delta=-2.582e-05 neg_rc=479 min_rc=-1.013e-01 theta=1.408e-02 degen=0 repairs=0 soft=0
+LIVE it= 14200 obj=303.653678 obj_delta=-4.203e-05 neg_rc=436 min_rc=-5.056e-02 theta=2.140e-02 degen=0 repairs=0 soft=0
+LIVE it= 14400 obj=303.519480 obj_delta=-1.259e-04 neg_rc=416 min_rc=-6.973e-02 theta=1.949e-02 degen=0 repairs=0 soft=0
+LIVE it= 14600 obj=303.471358 obj_delta=-1.751e-05 neg_rc=422 min_rc=-6.046e-02 theta=3.000e+00 degen=0 repairs=0 soft=0
+LIVE it= 14800 obj=303.384674 obj_delta=-8.053e-05 neg_rc=422 min_rc=-6.227e-02 theta=3.799e-02 degen=0 repairs=0 soft=0
+LIVE it= 15000 obj=303.259109 obj_delta=-2.648e-04 neg_rc=456 min_rc=-1.099e+00 theta=3.646e-02 degen=0 repairs=0 soft=0
+LIVE it= 15200 obj=303.221182 obj_delta=-4.140e-07 neg_rc=350 min_rc=-4.814e-02 theta=5.946e-03 degen=0 repairs=0 soft=0
+LIVE it= 15400 obj=303.164639 obj_delta=-1.277e-03 neg_rc=583 min_rc=-5.608e-01 theta=5.803e-03 degen=0 repairs=0 soft=0
+LIVE it= 15600 obj=303.072718 obj_delta=-2.927e-04 neg_rc=351 min_rc=-3.247e-02 theta=9.447e-02 degen=0 repairs=0 soft=0
+LIVE it= 15800 obj=303.009322 obj_delta=-1.255e-04 neg_rc=399 min_rc=-9.261e-02 theta=5.644e-03 degen=0 repairs=0 soft=0
+LIVE it= 16000 obj=302.926842 obj_delta=-7.368e-04 neg_rc=317 min_rc=-3.026e-02 theta=5.667e-03 degen=0 repairs=0 soft=0
+LIVE it= 16200 obj=302.859470 obj_delta=-1.319e-03 neg_rc=325 min_rc=-1.148e-01 theta=1.114e-02 degen=0 repairs=0 soft=0
+LIVE it= 16400 obj=302.762676 obj_delta=-7.486e-04 neg_rc=305 min_rc=-9.279e-02 theta=5.781e-03 degen=0 repairs=0 soft=0
+LIVE it= 16600 obj=302.703402 obj_delta=-4.430e-05 neg_rc=254 min_rc=-1.733e-02 theta=1.543e-01 degen=0 repairs=0 soft=0
+LIVE it= 16800 obj=302.607892 obj_delta=-1.993e-05 neg_rc=256 min_rc=-1.672e-02 theta=1.877e-01 degen=0 repairs=0 soft=0
+LIVE it= 17000 obj=302.573825 obj_delta=-3.033e-06 neg_rc=242 min_rc=-2.398e-02 theta=3.243e-02 degen=0 repairs=0 soft=0
+LIVE it= 17200 obj=302.455510 obj_delta=-9.954e-05 neg_rc=217 min_rc=-1.759e-02 theta=1.953e-01 degen=0 repairs=0 soft=0
+LIVE it= 17400 obj=302.423500 obj_delta=-1.872e-04 neg_rc=217 min_rc=-1.515e-01 theta=2.289e-05 degen=0 repairs=0 soft=0
+LIVE it= 17600 obj=302.379803 obj_delta=-1.066e-04 neg_rc=214 min_rc=-4.631e-02 theta=1.327e+00 degen=0 repairs=0 soft=0
+LIVE it= 17800 obj=302.354952 obj_delta=-4.733e-05 neg_rc=188 min_rc=-1.894e-02 theta=1.124e-02 degen=0 repairs=0 soft=0
+LIVE it= 18000 obj=302.288089 obj_delta=-7.744e-06 neg_rc=189 min_rc=-1.385e-02 theta=2.772e-01 degen=0 repairs=0 soft=0
+LIVE it= 18200 obj=302.258397 obj_delta=-1.361e-05 neg_rc=352 min_rc=-3.907e-01 theta=1.128e-02 degen=0 repairs=0 soft=0
+LIVE it= 18400 obj=302.217274 obj_delta=-5.151e-06 neg_rc=146 min_rc=-1.331e-02 theta=6.920e-01 degen=0 repairs=0 soft=0
+LIVE it= 18600 obj=302.165096 obj_delta=-1.263e-05 neg_rc=131 min_rc=-1.607e-02 theta=6.087e-05 degen=0 repairs=0 soft=0
+LIVE it= 18800 obj=302.121795 obj_delta=-4.005e-05 neg_rc=151 min_rc=-1.426e-02 theta=1.827e-03 degen=0 repairs=0 soft=0
+LIVE it= 19000 obj=302.088594 obj_delta=-2.342e-05 neg_rc=472 min_rc=-4.700e-01 theta=2.659e-03 degen=0 repairs=0 soft=0
+LIVE it= 19200 obj=302.068503 obj_delta=-4.594e-04 neg_rc=138 min_rc=-4.707e-02 theta=3.942e-04 degen=0 repairs=0 soft=0
+LIVE it= 19400 obj=302.040001 obj_delta=-1.442e-04 neg_rc=137 min_rc=-1.097e-02 theta=8.467e-03 degen=0 repairs=0 soft=0
+LIVE it= 19600 obj=301.989163 obj_delta=-2.305e-04 neg_rc=206 min_rc=-2.818e-01 theta=1.394e-03 degen=0 repairs=0 soft=0
+LIVE it= 19800 obj=301.966649 obj_delta=-1.776e-04 neg_rc=110 min_rc=-1.037e-02 theta=5.761e-01 degen=0 repairs=0 soft=0
+LIVE it= 20000 obj=301.925238 obj_delta=-6.285e-05 neg_rc=94 min_rc=-7.823e-03 theta=3.381e+00 degen=0 repairs=0 soft=0
+LIVE it= 20200 obj=301.890036 obj_delta=-7.922e-05 neg_rc=175 min_rc=-2.978e-02 theta=2.186e-03 degen=0 repairs=0 soft=0
+LIVE it= 20400 obj=301.867783 obj_delta=-1.145e-03 neg_rc=101 min_rc=-2.807e-02 theta=2.754e-02 degen=0 repairs=0 soft=0
+LIVE it= 20600 obj=301.838189 obj_delta=-1.744e-06 neg_rc=95 min_rc=-4.885e-03 theta=3.936e-02 degen=0 repairs=0 soft=0
+LIVE it= 20800 obj=301.810306 obj_delta=-1.683e-02 neg_rc=61 min_rc=-2.106e-03 theta=2.636e+00 degen=0 repairs=0 soft=0
+LIVE it= 21000 obj=301.784399 obj_delta=-1.210e-05 neg_rc=58 min_rc=-1.039e-03 theta=2.451e-04 degen=0 repairs=0 soft=0
+LIVE it= 21200 obj=301.771614 obj_delta=-1.469e-04 neg_rc=46 min_rc=-1.058e-03 theta=7.262e+00 degen=0 repairs=0 soft=0
+LIVE it= 21400 obj=301.749589 obj_delta=-3.097e-04 neg_rc=214 min_rc=-7.325e-02 theta=6.712e-02 degen=0 repairs=0 soft=0
+LIVE it= 21600 obj=301.722532 obj_delta=-5.007e-06 neg_rc=51 min_rc=-4.262e-01 theta=2.478e-04 degen=0 repairs=0 soft=0
+LIVE it= 21800 obj=301.714395 obj_delta=-2.478e-06 neg_rc=53 min_rc=-1.417e-03 theta=6.798e-02 degen=0 repairs=0 soft=0
+LIVE it= 22000 obj=301.712446 obj_delta=-7.505e-07 neg_rc=9 min_rc=-1.423e-04 theta=1.914e-01 degen=0 repairs=0 soft=0
+
+OPTIMAL at it=22046: obj=301.711611639 resid=1.746e-12 repairs=0 soft_clamps=0
+LIVE OPTIMAL it=22046 obj=301.711611639 neg_rc=0
+  SAVED final solution -> C:\Users\anshp\OneDrive\SIH26119\artifacts\pilot87\p87_phase2_v2_final.npz
+
+========== PHASE II V2 SUMMARY ==========
+  iterations:      22046
+  wall time:       3063.4s
+  full repairs:    0  (PhaseI pivots=0)
+  soft clamps:     0
+  obj:             433.195886 -> 301.711612  delta=-131.484275
+  obj_delta:       +17  -21836  ~0=193  (+0.1% -99.0%)
+  degen:           225/22046 (1.0%)
+  LU time:         med=0.0338s  mean=0.0345s  sum=760.7s
+  xB residual:     mean=1.784e-11  max=9.627e-08
+  neg_rc:          first_e=1517.3  last_e=35.7  min=1  max=2799
+  degen runs:      count=199  mean=1.1  max=4  sum=225
+  pricing: Devex used for 22046/22046 iterations (degen under Devex=225)
+
+  Progress by 1000-iter blocks:
+    it     0-  999: obj 433.196 -> 335.656 (d=-97.540)
+    it  1000- 1999: obj 335.652 -> 328.765 (d=-6.887)
+    it  2000- 2999: obj 328.759 -> 325.175 (d=-3.585)
+    it  3000- 3999: obj 325.163 -> 320.866 (d=-4.297)
+    it  4000- 4999: obj 320.865 -> 317.580 (d=-3.285)
+    it  5000- 5999: obj 317.580 -> 314.913 (d=-2.667)
+    it  6000- 6999: obj 314.913 -> 312.141 (d=-2.772)
+    it  7000- 7999: obj 312.141 -> 310.685 (d=-1.456)
+    it  8000- 8999: obj 310.684 -> 308.763 (d=-1.920)
+    it  9000- 9999: obj 308.762 -> 307.512 (d=-1.250)
+    it 10000-10999: obj 307.510 -> 305.790 (d=-1.720)
+    it 11000-11999: obj 305.789 -> 304.733 (d=-1.056)
+    it 12000-12999: obj 304.733 -> 304.218 (d=-0.515)
+    it 13000-13999: obj 304.218 -> 303.756 (d=-0.461)
+    it 14000-14999: obj 303.756 -> 303.259 (d=-0.497)
+    it 15000-15999: obj 303.259 -> 302.928 (d=-0.332)
+    it 16000-16999: obj 302.927 -> 302.574 (d=-0.353)
+    it 17000-17999: obj 302.574 -> 302.288 (d=-0.286)
+    it 18000-18999: obj 302.288 -> 302.089 (d=-0.199)
+    it 19000-19999: obj 302.089 -> 301.925 (d=-0.163)
+    it 20000-20999: obj 301.925 -> 301.784 (d=-0.141)
+    it 21000-21999: obj 301.784 -> 301.712 (d=-0.072)
+    it 22000-22045: obj 301.712 -> 301.712 (d=-0.001)
+
+  CSV:        C:\Users\anshp\OneDrive\SIH26119\artifacts\pilot87\p87_phase2_v2_log.csv
+  REPAIR CSV: C:\Users\anshp\OneDrive\SIH26119\artifacts\pilot87\p87_phase2_v2_repair_events.csv
+  SOFT CSV:   C:\Users\anshp\OneDrive\SIH26119\artifacts\pilot87\p87_phase2_v2_soft_events.csv
+[OK] Stage 'phase II' completed (exit 0).
+
+===== STAGE: strict polish =====
+======================================================================
+STRICT SIMPLEX POLISH — PILOT87 terminal basis
+======================================================================
+Terminal basis: it=22046  m=3608 n=8038  basis_size=3608
+Solver obj (scaled std-form): 301.711611639
+
+Before polish: min_rc=-7.692e-08  n_neg=7
+C:\Users\anshp\OneDrive\SIH26119\tools\certification\p87_strict_polish.py:138: RuntimeWarning: divide by zero encountered in divide
+  ratios = np.where(pos_mask, x_basic / d, np.inf)
+C:\Users\anshp\OneDrive\SIH26119\tools\certification\p87_strict_polish.py:138: RuntimeWarning: invalid value encountered in divide
+  ratios = np.where(pos_mask, x_basic / d, np.inf)
+  polish it=1: enter=1929 rc=-7.692e-08 leave=218 ratio=8.872e+00 deg=N obj=301.711610957
+  polish it=2: enter=46 rc=-1.467e-04 leave=7988 ratio=3.483e-03 deg=N obj=301.711610446
+  polish it=3: enter=166 rc=-4.186e-08 leave=189 ratio=6.541e+00 deg=N obj=301.711610172
+  polish it=4: enter=2514 rc=-1.006e-04 leave=4202 ratio=7.365e-04 deg=N obj=301.711610098
+  polish it=5: enter=4344 rc=-2.416e-05 leave=27 ratio=3.532e-04 deg=N obj=301.711610090
+  polish it=6: enter=7883 rc=-1.911e-05 leave=4344 ratio=9.305e-03 deg=N obj=301.711609912
+  polish it=7: enter=102 rc=-1.343e-07 leave=46 ratio=6.273e-01 deg=N obj=301.711609827
+  polish it=8: enter=2554 rc=-3.228e-05 leave=71 ratio=6.795e-04 deg=N obj=301.711609806
+  polish it=9: enter=2594 rc=-2.077e-05 leave=2514 ratio=8.192e-04 deg=N obj=301.711609789
+  polish it=10: enter=224 rc=-5.610e-07 leave=2554 ratio=8.995e-02 deg=N obj=301.711609738
+  polish it=11: enter=218 rc=-6.474e-08 leave=224 ratio=1.159e-01 deg=N obj=301.711609731
+  polish it=12: enter=311 rc=-1.809e-08 leave=2594 ratio=2.499e-01 deg=N obj=301.711609726
+  polish it=13: enter=193 rc=-1.173e-08 leave=1174 ratio=4.075e+00 deg=N obj=301.711609678
+  polish it=14: enter=7091 rc=-1.081e-08 leave=7883 ratio=4.932e+01 deg=N obj=301.711609145
+  polish it=15: enter=2514 rc=-1.294e-04 leave=218 ratio=8.454e-04 deg=N obj=301.711609036
+  polish it=16: enter=46 rc=-9.753e-05 leave=7925 ratio=2.650e-03 deg=N obj=301.711608777
+  polish it=17: enter=4364 rc=-1.301e-05 leave=193 ratio=4.212e-02 deg=N obj=301.711608229
+  polish it=18: enter=7941 rc=-1.686e-05 leave=311 ratio=3.400e-02 deg=N obj=301.711607656
+  polish it=19: enter=71 rc=-2.410e-04 leave=3169 ratio=2.048e-03 deg=N obj=301.711607163
+  polish it=20: enter=4406 rc=-3.999e-05 leave=3335 ratio=8.221e-03 deg=N obj=301.711606834
+  polish it=21: enter=4202 rc=-7.477e-05 leave=2155 ratio=1.686e-02 deg=N obj=301.711605573
+  polish it=22: enter=7988 rc=-1.816e-05 leave=4364 ratio=9.465e-02 deg=N obj=301.711603854
+  polish it=23: enter=4344 rc=-3.566e-03 leave=4303 ratio=9.738e-05 deg=N obj=301.711603507
+  polish it=24: enter=7684 rc=-5.154e-05 leave=4344 ratio=5.187e-03 deg=N obj=301.711603240
+  polish it=25: enter=4364 rc=-1.487e-05 leave=4059 ratio=8.826e-02 deg=N obj=301.711601927
+  polish it=26: enter=3462 rc=-1.630e-05 leave=4202 ratio=6.931e-02 deg=N obj=301.711600798
+  polish it=27: enter=7833 rc=-9.901e-06 leave=3462 ratio=1.808e-01 deg=N obj=301.711599008
+  polish it=28: enter=3335 rc=-1.120e-04 leave=3333 ratio=3.872e-02 deg=N obj=301.711594670
+  polish it=29: enter=4059 rc=-3.613e-05 leave=102 ratio=1.027e-02 deg=N obj=301.711594299
+  polish it=30: enter=38 rc=-1.990e-05 leave=37 ratio=8.450e-03 deg=N obj=301.711594130
+  polish it=31: enter=3333 rc=-3.567e-05 leave=7684 ratio=4.968e-02 deg=N obj=301.711592358
+  polish it=32: enter=102 rc=-3.179e-07 leave=3335 ratio=4.999e+00 deg=N obj=301.711590769
+  polish it=33: enter=7684 rc=-1.272e-06 leave=4059 ratio=3.978e-02 deg=N obj=301.711590718
+  polish it=34: enter=218 rc=-9.507e-08 leave=4364 ratio=8.836e+01 deg=N obj=301.711582317
+  polish it=35: enter=4344 rc=-1.266e-03 leave=221 ratio=3.775e-03 deg=N obj=301.711577539
+  polish it=36: enter=7883 rc=-2.472e-05 leave=4344 ratio=9.876e-02 deg=N obj=301.711575098
+  polish it=37: enter=104 rc=-9.608e-08 leave=2943 ratio=4.262e+00 deg=N obj=301.711574688
+  polish it=38: enter=3335 rc=-3.565e-05 leave=102 ratio=5.993e-03 deg=N obj=301.711574475
+  polish it=39: enter=4059 rc=-7.683e-07 leave=3335 ratio=4.615e-02 deg=N obj=301.711574439
+  polish it=40: enter=3057 rc=-2.618e-08 leave=1417 ratio=5.657e+01 deg=N obj=301.711572958
+  polish it=41: enter=3335 rc=-5.773e-04 leave=4059 ratio=4.606e-03 deg=N obj=301.711570299
+  polish it=42: enter=1174 rc=-2.720e-05 leave=7883 ratio=3.684e-02 deg=N obj=301.711569297
+  polish it=43: enter=4059 rc=-8.901e-06 leave=3335 ratio=3.256e-02 deg=N obj=301.711569007
+  polish it=44: enter=3462 rc=-7.288e-06 leave=1615 ratio=2.932e-01 deg=N obj=301.711566871
+  polish it=45: enter=37 rc=-3.172e-07 leave=4466 ratio=3.733e-01 deg=N obj=301.711566752
+  polish it=46: enter=102 rc=-1.677e-07 leave=104 ratio=8.650e+00 deg=N obj=301.711565301
+  polish it=47: enter=3335 rc=-2.676e-05 leave=4059 ratio=2.387e-03 deg=N obj=301.711565238
+  polish it=48: enter=2155 rc=-2.159e-08 leave=4563 ratio=4.838e+00 deg=N obj=301.711565133
+  STRICT OPTIMAL at polish iter=48, min_rc=0.000e+00 (all >= 0)
+
+======================================================================
+STRICT POLISH RESULT:
+  Pivots taken:      48
+  Min reduced cost:  0.000e+00
+  Neg reduced costs: 0
+  Final objective:   301.711565133
+======================================================================
+Saved polished basis to p87_strict_polished.npz
+
+======================================================================
+STRICT KKT CERTIFICATE (raw precision, no tolerance floor)
+======================================================================
+[1] Primal ||Ax-b||_inf  = 3.638e-11
+[2] min(z_nonbasic)      = -1.070e-18
+    num z < 0            = 1
+    num z < -1e-12       = 0
+    cond(B)              = 5.4e+08  (sign noise floor ~1.2e-05)
+[3] Complementarity x'z  = 4.716e-12
+[4] Basis residual       = 3.638e-11
+[5] Original objective   = 301.710347333
+    HiGHS reference      = 301.710347333
+    |delta|              = 1.034e-10
+[6] Orig primal feasibility:
+    E-row residual       = 8.251e-12
+    Ineq violation       = 2.228e-11
+    lb violation         = 8.299e-15
+    ub violation         = 1.723e-11
+[7] Strong duality gap   = -2.331e-12
+
+======================================================================
+VERDICT: STRICT VERIFIED OPTIMAL
+  reduced costs: min=-1.07e-18 (noise floor 1.2e-05) -> all >= 0 within cond noise
+  original objective vs HiGHS: |delta|=1.034e-10
+  (elapsed 36.3s)
+======================================================================
+[OK] Stage 'strict polish' completed (exit 0).
+
+===== STAGE: certification =====
+final: it=22046  solver obj(scaled std-form)=301.711611639  basis=3608
+scaling row[1.000e-03..1.000e+00] col[1.000e+00..1.000e+03]
+
+===== [1] SCALED STANDARD-FORM PRIMAL ====
+  ||A x - b||_inf (scaled) = 1.738e-12
+  x >= 0 ?  min(x)=0.000e+00
+
+===== [2] SCALED DUAL & REDUCED COSTS ====
+  max|z_basic| = 3.661e-15
+  min z over nonbasic = -7.692e-08
+  dual residual ||A^T y + z - c||_inf = 1.301e-17
+
+===== [3] SCALED COMPLEMENTARITY ====
+  x'z  = 1.552e-12   min z = -7.692e-08
+
+===== [4] SCALED BASIS ====
+  B x_B - b residual = 1.746e-12   cond(B) = 4.084e+05
+
+===== [5] UNSCALED STANDARD-FORM RECONSTRUCTION ====
+  ||A0 x0 - b0||_inf = 1.965e-10
+  ||A0^T y0 + z0 - c0||_inf = 8.882e-16
+  x0'z0 = 1.552e-12   min z0 = -7.692e-08
+  c0'x0 (unscaled std-form objective) = 301.711611639
+  |obj_std - solver_obj| = 5.684e-14
+  std-form dual bound b0'y0 = 301.711611639   gap = 7.390e-13
+
+===== [6] ORIGINAL-LP RECONSTRUCTION ====
+  n_orig = 4883
+  c_orig @ offset (std-form constant) = -0.001217800
+  c_orig @ x_orig (ORIGINAL objective) = 301.710393839
+  |obj_orig - (obj_std + const_off)| = 0.000e+00
+  HiGHS reference = 301.710347333
+  |obj_orig - HiGHS| = 4.651e-05
+  orig E-row residual  = 1.892e-10 (must be ~0)
+  orig ineq-row violation (L:A x<=b, G:A x>=b) = 1.892e-10
+  orig bound violations: lb=0.000e+00 ub=9.202e-13
+
+===== [7] CERTIFICATE SUMMARY ====
+[PASS] PRIMAL FEASIBLE (||Ax-b||_inf<=1e-6)
+      ||Ax-b|| = 1.964508555829525e-10
+[PASS] ORIGINAL-LP PRIMAL FEASIBLE
+      row_viol = 1.8917489796876907e-10
+      lb_viol = 0.0
+      ub_viol = 9.201528428093297e-13
+[PASS] DUAL FEASIBLE (A^Ty+z=c, z>=-1e-6)
+      ||A^Ty+z-c|| = 8.881784197001252e-16
+      min_z = -7.692309978747647e-08
+[PASS] COMPLEMENTARITY (x^T z ~ 0)
+      x^T z = 1.5516148553799105e-12
+[PASS] BASIS OK (B x_B = b)
+      Bx_B-b = 1.7463114287963322e-12
+[PASS] HIGHS AGREEMENT (|obj - ref| <= 1e-4)
+      |obj - ref| = 4.651e-05
+      relative = 1.54e-07
+
+  ORIGINAL OBJECTIVE (independently recomputed) = 301.710393839
+  HiGHS reference                              = 301.710347333
+  |Delta obj| = 4.651e-05  (relative 1.54e-07)
+
+  -> VERIFIED OPTIMAL (elapsed 34.4s)
+[OK] Stage 'certification' completed (exit 0).
+
+Certificate:       C:\Users\anshp\OneDrive\SIH26119\artifacts\pilot87\p87_certificate.txt
+Strict certificate:C:\Users\anshp\OneDrive\SIH26119\artifacts\pilot87\p87_strict_certificate.txt
+Polished artifact: C:\Users\anshp\OneDrive\SIH26119\artifacts\pilot87\p87_strict_polished.npz
+Pipeline completed.

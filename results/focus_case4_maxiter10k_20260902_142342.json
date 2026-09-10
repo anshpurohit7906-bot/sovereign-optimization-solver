@@ -1,0 +1,20 @@
+{
+  "case": 4,
+  "rows": 2000,
+  "cols": 1000,
+  "nnz": 59103,
+  "max_iter": 10000,
+  "tol": 1e-07,
+  "check_every": 250,
+  "cpu_s": 14.589630100002978,
+  "cpu_iters": 10000,
+  "gpu_solver_s": 9.428923828125,
+  "gpu_solver_iters": 10000,
+  "gpu_solver_converged": false,
+  "gpu_e2e_s": 9.549031800001103,
+  "gpu_e2e_iters": 10000,
+  "gpu_e2e_converged": false,
+  "solver_only_speedup": 1.547327178154139,
+  "e2e_speedup": 1.5278648564141648,
+  "inversion_e2e_lt_solver": false
+}

@@ -71,11 +71,13 @@ src/                  production LP core (parser, numerical model, Mehrotra IPM,
                       linear system, scaling) — do not modify solver behavior
 tests/                production regression + edge-case test suite
 data/                 MPS benchmark inputs (afiro.mps, pilot87.mps, ...)
-experiment/           isolated research: crossover, pdhg, mcc, regularization, ...
-tools/certification/  independent KKT certificate + strict-polish scripts
+tools/                benchmark harness + certification scripts
+  tools/benchmark_netlib.py        Netlib LP benchmark vs HiGHS reference
+  tools/certification/            independent KKT certificate + strict-polish
+experiment/           isolated research: crossover, pdhg, sparse, gpu, ...
+results/              generated benchmark/experiment reports (markdown + csv)
 artifacts/pilot87/    validated PILOT87 results (npz + certificates)
 archive/              historical research, superseded experiments, logs
-docs/                 (future) design documents
 ```
 
 ---
@@ -477,31 +479,31 @@ They are not used as the optimization engine.
 
 ### Netlib benchmark results
 
+`tools/benchmark_netlib.py` solves every `data/*.mps` instance through the
+production sparse path (`load_numeric_mps(sparse=True)` -> `solve_lp`) and
+cross-checks each objective against a fresh SciPy HiGHS oracle
+(`linprog(method="highs")`).  Report is regenerated to
+`results/benchmark_netlib.md`/`.csv`; latest run:
+
 ```text
-AFIRO
-  status                 = optimal
-  relative objective error = 8.51e-08
-
-SC205
-  status                 = optimal
-  relative objective error = 2.55e-08
-
-ADLITTLE
-  status                 = optimal
-  relative objective error = 4.91e-08
-
-SHARE2B
-  status                 = optimal
-  relative objective error = 1.54e-08
-
-BLEND
-  status                 = optimal
-  relative objective error = 5.83e-09
+instance       status      solver objective  HiGHS reference   rel obj err     rel_gap
+adlittle       optimal     225494.963156     225494.963162     2.95e-11        1.28e-10
+afiro          optimal     -464.753142659    -464.753142857     4.26e-10        3.76e-10
+blend          optimal     -30.812149660     -30.812149846      5.83e-09        6.39e-09
+pilot4_plain   certified   -2581.139259      -2581.139259       4.49e-11        1.76e-15
+pilot87        certified   301.710347333     301.710347333      2.42e-13        (strict KKT cert)
+sc205          optimal     -52.202061205     -52.202061212      1.27e-10        3.99e-10
+share2b        optimal     -415.732240603    -415.732240741     3.31e-10        2.16e-10
 ```
 
-These results were reproduced from the current repository state. The canonical
-benchmark numbers for presentations should always come from the final frozen
-repository state.
+PILOT87's objective is folded from the independent strict KKT certificate
+(`artifacts/pilot87/p87_strict_certificate.txt`, |delta| = 1e-10 vs HiGHS), not
+from a direct interior-point solve.  PILOT4's objective is folded from its
+crossover certificate (`artifacts/pilot4/p4_crossover_certificate.txt`, 3/3
+bit-identical RRQR → repair → Phase II runs, |delta| = 4.5e-11 vs HiGHS).
+The direct IPM stalls on this instance; the crossover pipeline proves optimality.
+All 7/7 instances verified.  The canonical benchmark numbers for presentations
+should always come from the final frozen repository state.
 
 ---
 

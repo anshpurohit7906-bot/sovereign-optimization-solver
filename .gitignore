@@ -8,6 +8,14 @@ venv/
 .vscode/
 .idea/
 
+# Dashboard (Streamlit UI — separate concern, not committed here)
+dashboard/
+dashboard.zip
+run_dashboard.py
+
+# Editor/backup artifacts
+*.bak
+
 # Generated pipeline artifacts (regenerate via: python tools/run_pilot87_verified.py)
 artifacts/
 

@@ -1,0 +1,29 @@
+======================================================================
+PILOT4 CROSSOVER CERTIFICATE  (RRQR -> sparse repair -> Phase II simplex)
+======================================================================
+Source: experiment/crossover/scratch/pilot4_crossover8.log
+Driver: experiment/crossover/run_pilot4_crossover.py (read-only on production code)
+
+3/3 bit-identical runs:
+  Phase II pivots:    10589
+  Status:             optimal (certified: simplex optimum reached)
+
+======================================================================
+VERIFICATION (run1 representative; all 3 runs bit-identical):
+  [1] Basis residual        = 1.04e-10
+  [2] Primal rel residual   = 4.148e-14
+  [3] min reduced cost      = -1.138e-14  (noise floor at cond ~1e10)
+  [4] Dual rel residual     = -1.116e-14
+  [5] Strong duality rel_gap= 1.762e-15
+======================================================================
+
+======================================================================
+CROSSOVER-CERTIFIED OPTIMAL:
+  Original objective   = -2581.139259
+  HiGHS reference      = -2581.139258884
+  |delta|              = 1.116e-07
+======================================================================
+VERDICT: CROSSOVER CERTIFIED OPTIMAL
+  Phase II simplex + basis verification all pass
+  (elapsed ~1925s per run, reproducible with OPENBLAS_NUM_THREADS=1)
+======================================================================
