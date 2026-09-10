@@ -1,35 +1,43 @@
 """Netlib LP benchmark harness: production sparse Mehrotra vs HiGHS reference.
 
-Solves every ``data/*.mps`` instance through the production sparse
-end-to-end path (``load_numeric_mps(sparse=True)`` -> ``solve_lp``) and
-cross-checks each objective against a fresh HiGHS solve via
-``scipy.optimize.linprog(method="highs")``.  Emits an honest Markdown report
-and CSV table under ``results/`` that can be dropped straight into
-presentations.
+Every ``solve_lp`` call runs with ``crossover_fallback=True`` (the production
+branch default intent), so a stalled / numerical-tail IPM automatically
+attempts the sparse-simplex crossover.  Each report row therefore carries a
+``method`` that is exactly one of::
 
-PILOT87 is deliberately NOT re-solved by the interior-point path here: its
-optimal objective is already proven by the independent strict KKT certificate
-(``artifacts/pilot87/p87_strict_certificate.txt``, |delta| = 1e-10 vs HiGHS).
-Similarly, PILOT4's objective is folded from the crossover certificate
-(``artifacts/pilot4/p4_crossover_certificate.txt``, 3/3 bit-identical runs,
-|delta| = 1.1e-7 vs HiGHS).  The direct IPM stalls on this instance; the
-RRQR → sparse repair → Phase II simplex pipeline proves optimality.
+    ipm         direct interior-point solve converged on its own
+    crossover   IPM stalled; the automatic sparse-crossover fallback resolved
+                it (accepted only when all three residuals are <= tol)
+    certified   value folded from an independent certificate artifact; the
+                model is not re-solved here
 
-The harness folds those certified values in instead, and additionally runs a
-fresh HiGHS reference so every row in the table carries an independently
-computed reference objective.
+PILOT87 is deliberately NOT re-solved by the interior-point path: its optimal
+objective is already proven by the independent strict KKT certificate
+(``artifacts/pilot87/p87_strict_certificate.txt``, |delta| = 1e-10 vs HiGHS),
+so that row is a ``certified`` fold-in.
+
+PILOT4 (``pilot4_plain``) is the canonical ``crossover`` row: the direct IPM
+stalls on it, and the automatic fallback converges it end-to-end (Phase I +
+Phase II sparse simplex), reproducing the objective independently proven by the
+crossover certificate ``artifacts/pilot4/p4_crossover_certificate.txt``
+(3/3 bit-identical runs, |delta| = 1.1e-7 vs HiGHS).  The certificate is kept
+as an independent cross-check, not as the row source.
+
+A fresh HiGHS reference is run for every row, so each line of the table carries
+an independently computed reference objective.
 
 Instances that do not reach the acceptance tolerance are reported honestly as
 ``FAIL`` (best-iterate objective error is shown), never silently dropped.
 
 Usage::
 
-    python tools/benchmark_netlib.py                          # all data/*.mps
-    python tools/benchmark_netlib.py --only afiro blend       # fast subset
-    python tools/benchmark_netlib.py --skip-pilot87-highs     # reuse cert ref
+    python tools/benchmark_netlib.py                           # all data/*.mps (fallback on)
+    python tools/benchmark_netlib.py --no-crossover-fallback   # direct IPM only; PILOT4 FAILs honestly
+    python tools/benchmark_netlib.py --only afiro blend        # fast subset
+    python tools/benchmark_netlib.py --skip-pilot87-highs      # reuse cert ref
 
-Exit code is 0 iff every instance either passes or is a certified fold-in
-(PILOT87 or PILOT4), i.e. 0 normally; 1 marks a real regression in the solver.
+Exit code is 0 iff every instance passes (direct, crossover, or a certified
+fold-in such as PILOT87), i.e. 0 normally; 1 marks a real regression.
 """
 
 from __future__ import annotations
@@ -81,8 +89,6 @@ PILOT4_OBJECTIVE = -2581.139259
 PILOT4_HIGHS_REFERENCE = -2581.139258884
 PILOT4_DELTA = 1.116e-07
 
-P4_CERT = os.path.join(_ROOT, "artifacts", "pilot4", "p4_crossover_certificate.txt")
-
 # Acceptance gate: relative objective error below which a direct solve PASSes.
 PASS_OBJ_TOL = 1e-6
 
@@ -112,6 +118,27 @@ def _parse_cert_objective(cert_path: str | None = None) -> tuple[float | None, f
     if mh:
         reg = float(mh.group(1))
     return obj, reg
+
+
+# Route detection: solve_standard_form sets a deterministic message prefix when
+# an accepted sparse-crossover fallback replaces the IPM iterate.  This is the
+# only signal the result object exposes today (status is "optimal" both when
+# the IPM converges directly and when a crossover resolves a stall).
+_CROSSOVER_MSG_RE = re.compile(
+    r"^sparse crossover from (?:stalled|numerical_tail): "
+    r"Phase I (\d+) iters, Phase II (\d+) pivots"
+)
+
+
+def _parse_crossover_message(message: str | None) -> tuple[int, int] | None:
+    """Return ``(phase1_iters, phase2_pivots)`` if *message* records an accepted
+    sparse-crossover fallback, else ``None``."""
+    if not message:
+        return None
+    m = _CROSSOVER_MSG_RE.match(message)
+    if m is None:
+        return None
+    return int(m.group(1)), int(m.group(2))
 
 
 def _highs_reference(lp):
@@ -147,12 +174,21 @@ def _highs_reference(lp):
         bounds=bounds,
         method="highs",
     )
-def _solve_one(path: str, max_iter: int, tol: float) -> dict:
-    """Solve one MPS file through the production sparse path + HiGHS oracle."""
+def _solve_one(path: str, max_iter: int, tol: float,
+               crossover_fallback: bool = True) -> dict:
+    """Solve one MPS file through the production sparse path + HiGHS oracle.
+
+    ``method`` is ``"crossover"`` when the interior-point path stalled and the
+    automatic sparse-crossover fallback produced the final iterate (detected
+    from the deterministic ``solve_standard_form`` message), else ``"ipm"``.
+    """
     lp = load_numeric_mps(path, sparse=True)
     t0 = time.perf_counter()
-    res = solve_lp(lp, tol=tol, max_iter=max_iter)
+    res = solve_lp(lp, tol=tol, max_iter=max_iter,
+                   crossover_fallback=crossover_fallback)
     dt = time.perf_counter() - t0
+    crossover_stats = _parse_crossover_message(res.message)
+    method = "crossover" if crossover_stats is not None else "ipm"
     ref = _highs_reference(lp)
     ref_obj = float(ref.fun) if (ref.success and np.isfinite(ref.fun)) else float("nan")
     obj_err = abs(float(res.objective) - ref_obj) if np.isfinite(ref_obj) else float("nan")
@@ -164,7 +200,10 @@ def _solve_one(path: str, max_iter: int, tol: float) -> dict:
         "n": int(lp.num_vars),
         "nnz": int(lp.nnz),
         "status": res.status,
+        "method": method,
         "iterations": int(res.iterations),
+        "phase1_iters": crossover_stats[0] if crossover_stats else None,
+        "phase2_pivots": crossover_stats[1] if crossover_stats else None,
         "solver_objective": float(res.objective),
         "ref_objective": ref_obj,
         "rel_obj_error": rel_obj_err,
@@ -199,7 +238,10 @@ def _pilot87_row(skip_highs: bool) -> dict:
         "n": 4883,
         "nnz": 73152,
         "status": "certified",
+        "method": "certified",
         "iterations": None,
+        "phase1_iters": None,
+        "phase2_pivots": None,
         "solver_objective": obj,
         "ref_objective": ref,
         "rel_obj_error": rel_obj_err,
@@ -207,41 +249,6 @@ def _pilot87_row(skip_highs: bool) -> dict:
         "rel_gap": None,
         "rel_primal": None,
         "rel_dual": None,
-        "time_sec": dt,
-        "pass": bool(delta <= 1e-4),
-    }
-
-
-def _pilot4_row(skip_highs: bool) -> dict:
-    """Build the PILOT4 row from its crossover certificate (+ HiGHS oracle)."""
-    cert_obj, cert_ref = _parse_cert_objective(P4_CERT)
-    obj = cert_obj if cert_obj is not None else PILOT4_OBJECTIVE
-    ref = cert_ref if cert_ref is not None else PILOT4_HIGHS_REFERENCE
-    delta = abs(obj - ref)
-    dt = 0.0
-    if not skip_highs:
-        lp = load_numeric_mps(os.path.join(DEFAULT_DATA_DIR, "pilot4_plain.mps"), sparse=True)
-        t0 = time.perf_counter()
-        refreshed = _highs_reference(lp)
-        dt = time.perf_counter() - t0
-        if refreshed.success and np.isfinite(refreshed.fun):
-            ref = float(refreshed.fun)
-        delta = abs(obj - ref)
-    rel_obj_err = delta / (1.0 + abs(ref))
-    return {
-        "instance": "pilot4_plain",
-        "m": 410,
-        "n": 1000,
-        "nnz": 5141,
-        "status": "certified",
-        "iterations": None,
-        "solver_objective": obj,
-        "ref_objective": ref,
-        "rel_obj_error": rel_obj_err,
-        "abs_obj_error": delta,
-        "rel_gap": 1.762e-15,
-        "rel_primal": 4.148e-14,
-        "rel_dual": -1.116e-14,
         "time_sec": dt,
         "pass": bool(delta <= 1e-4),
     }
@@ -257,35 +264,54 @@ def _write_markdown(rows: list[dict], out_path: str) -> None:
     lines = [
         "# Netlib LP benchmark: production sparse Mehrotra vs HiGHS",
         "",
-        "All `data/*.mps` instances are solved through the production sparse",
-        "end-to-end path (`load_numeric_mps(sparse=True)` + `solve_lp`) and",
-        "cross-checked against a fresh `scipy.optimize.linprog(method=\"highs\")`",
-        f"reference objective.  Acceptance: relative objective error <= `{PASS_OBJ_TOL:g}`",
-        "for direct solves; the PILOT87 row uses its certified objective.",
+        "Every `data/*.mps` instance is solved through the production sparse",
+        "end-to-end path (`load_numeric_mps(sparse=True)` + `solve_lp` with",
+        "`crossover_fallback=True`) and cross-checked against a fresh",
+        "`scipy.optimize.linprog(method=\"highs\")` reference objective.",
+        f"Acceptance: relative objective error <= `{PASS_OBJ_TOL:g}`.",
+        "Method legend: `ipm` = direct interior-point solve; `crossover` = the",
+        "IPM stalled and the automatic sparse-crossover fallback resolved it;",
+        "`certified` = value folded from an independent certificate artifact.",
         "",
-        "| instance | m | n | nnz | status | iters | solver objective | HiGHS reference | rel obj err | rel_gap | time (s) | PASS |",
-        "|---|---|---|---|---|---|---|---|---|---|---|---|",
+        "| instance | m | n | nnz | status | method | iters | solver objective | HiGHS reference | rel obj err | rel_gap | time (s) | PASS |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for r in rows:
         iters = _fmt(r["iterations"])
+        if r["method"] == "crossover":
+            iters = f"{iters} + {_fmt(r['phase2_pivots'])} piv"
         gap = _fmt(r["rel_gap"])
         lines.append(
             f"| {r['instance']} | {r['m']} | {r['n']} | {r['nnz']} "
-            f"| {r['status']} | {iters} | {r['solver_objective']:.9g} "
+            f"| {r['status']} | {r['method']} | {iters} | {r['solver_objective']:.9g} "
             f"| {r['ref_objective']:.9g} | {r['rel_obj_error']:.3g} | {gap} "
             f"| {r['time_sec']:.3f} | {'PASS' if r['pass'] else 'FAIL'} |"
         )
     passed = sum(1 for r in rows if r["pass"])
     lines += ["", f"**Summary:** {passed}/{len(rows)} instances verified against HiGHS.", ""]
     lines += [
+        "**Method notes**",
+        "",
+        "- `ipm`: converged by the interior-point path alone.",
+        "- `crossover`: the IPM stopped in `stalled`/`numerical_tail`; the internal sparse",
+        "  crossover (`crossover_fallback=True`) replaced the iterate only after",
+        "  rel_primal/rel_dual/rel_gap were all independently <= tol.  For these rows the",
+        "  `iters` cell shows `IPM iterations + Phase II pivots`.",
+        "- `certified`: objective folded from an independent certificate; the model is not",
+        "  re-solved by the interior-point path here.",
+        "",
         "**PILOT87 note:** objective folded from the independent strict KKT certificate"
         f" (|delta| = {PILOT87_DELTA:g} vs HiGHS); the HiGHS column is a fresh oracle"
         " solve.  The interior-point path does not re-solve this hard instance here.",
         "",
-        "**PILOT4 note:** objective folded from the crossover certificate (RRQR → sparse"
-        f" repair → Phase II simplex; 3/3 bit-identical runs, |delta| = {PILOT4_DELTA:g}"
-        " vs HiGHS).  The direct IPM path stalls on this instance; the crossover pipeline"
-        " proves optimality.",
+        "**PILOT4 note:** `pilot4_plain` is now solved through the production path: the"
+        " direct IPM stalls, the automatic sparse-crossover fallback converges it"
+        " (see the `crossover` row and its `iters` cell), and the objective is"
+        " cross-checked against a fresh HiGHS oracle.  The result reproduces the"
+        " independently certified objective"
+        f" (`artifacts/pilot4/p4_crossover_certificate.txt`, 3/3 bit-identical runs,"
+        f" |delta| = {PILOT4_DELTA:g} vs HiGHS), which is kept as a cross-check rather"
+        " than the row source.",
         "",
     ]
     stalled = [r for r in rows if r["status"] not in ("optimal", "certified")]
@@ -306,7 +332,10 @@ def _write_csv(rows: list[dict], out_path: str) -> None:
         "n",
         "nnz",
         "status",
+        "method",
         "iterations",
+        "phase1_iters",
+        "phase2_pivots",
         "solver_objective",
         "ref_objective",
         "abs_obj_error",
@@ -339,13 +368,16 @@ def run_benchmark(
     only: tuple[str, ...] | None = None,
     max_iter: int = 100,
     tol: float = 1e-8,
+    crossover_fallback: bool = True,
     skip_pilot87_highs: bool = False,
-    skip_pilot4_highs: bool = False,
 ) -> list[dict]:
     """Run the full benchmark and write Markdown + CSV reports.
 
     ``only`` restricts the instance set by MPS stem (used by fast CI smoke
-    tests).  Returns the row dicts in report order for the caller to inspect.
+    tests).  ``crossover_fallback`` is forwarded to every ``solve_lp`` call; a
+    stalled instance whose sparse-simplex crossover converges is reported with
+    ``method == "crossover"``.  Returns the row dicts in report order for the
+    caller to inspect.
     """
     all_paths = sorted(Path(data_dir).glob("*.mps"))
     if only:
@@ -361,13 +393,13 @@ def run_benchmark(
         stem = p.stem.lower()
         if stem == "pilot87":
             row = _pilot87_row(skip_highs=skip_pilot87_highs)
-        elif stem == "pilot4_plain":
-            row = _pilot4_row(skip_highs=skip_pilot4_highs)
         else:
-            row = _solve_one(str(p), max_iter=max_iter, tol=tol)
+            row = _solve_one(str(p), max_iter=max_iter, tol=tol,
+                             crossover_fallback=crossover_fallback)
         rows.append(row)
         print(
-            f"[{len(rows)}/{len(paths)}] {row['instance']:12s} {row['status']:12s} "
+            f"[{len(rows)}/{len(paths)}] {row['instance']:12s} "
+            f"{row['status']:10s} {row['method']:9s} "
             f"obj={row['solver_objective']:.9g} ref={row['ref_objective']:.9g} "
             f"rel_obj_err={row['rel_obj_error']:.3g} rel_gap={row['rel_gap']} "
             f"time={row['time_sec']:.2f}s"
@@ -394,8 +426,9 @@ def main(argv: list[str] | None = None) -> int:
         help="do not run a fresh HiGHS oracle on pilot87 (reuse certificate reference only)",
     )
     parser.add_argument(
-        "--skip-pilot4-highs", action="store_true",
-        help="do not run a fresh HiGHS oracle on pilot4_plain (reuse certificate reference only)",
+        "--no-crossover-fallback", dest="crossover_fallback", action="store_false",
+        help="run the interior-point path only (disables the automatic sparse-crossover"
+             " fallback; pilot4_plain then FAILs honestly)",
     )
     args = parser.parse_args(argv)
     rows = run_benchmark(
@@ -405,8 +438,8 @@ def main(argv: list[str] | None = None) -> int:
         only=tuple(args.only) if args.only else None,
         max_iter=args.max_iter,
         tol=args.tol,
+        crossover_fallback=args.crossover_fallback,
         skip_pilot87_highs=args.skip_pilot87_highs,
-        skip_pilot4_highs=args.skip_pilot4_highs,
     )
     n_pass = sum(1 for r in rows if r["pass"])
     print(f"\nPASS {n_pass}/{len(rows)}")

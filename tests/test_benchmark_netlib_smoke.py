@@ -1,10 +1,13 @@
 """Smoke test for the Netlib benchmark harness (fast instances only).
 
-Exercises ``tools/benchmark_netlib.py`` end-to-end on the two cheapest
-instances (``afiro``, ``blend``) so the harness plumbing — sparse model
-loading, ``solve_lp``, the HiGHS reference oracle, and the Markdown/CSV
-emitters — is covered without paying the PILOT87 cash price (its fresh HiGHS
-oracle alone costs ~3s) or the stalled ``pilot4_plain`` solve.
+Exercises ``tools/benchmark_netlib.py`` end-to-end on the cheapest
+instances (``afiro``, ``blend``) plus the three report routes — direct IPM
+(``method == "ipm"``), the automatic sparse-crossover fallback on
+``pilot4_plain`` (``method == "crossover"``), and the ``pilot87`` certified
+fold-in (``method == "certified"``) — so the harness plumbing — sparse model
+loading, ``solve_lp``, the HiGHS reference oracle, crossover-route detection,
+and the Markdown/CSV emitters — is covered.  A full all-instance run is
+deliberately avoided (PILOT87's fresh HiGHS oracle alone costs ~3s).
 
 The harness is imported directly (no subprocess) so the smoke test stays fast
 and portable.
@@ -44,6 +47,7 @@ def test_smoke_run_afiro_blend(tmp_path) -> None:
     assert [r["instance"] for r in rows] == ["afiro", "blend"]
     for r in rows:
         assert r["status"] == "optimal", r
+        assert r["method"] == "ipm", r
         assert r["pass"] is True, r
         assert r["rel_obj_error"] <= benchmark_netlib.PASS_OBJ_TOL, r
         assert np.isfinite(r["rel_gap"])
@@ -56,13 +60,13 @@ def test_smoke_run_afiro_blend(tmp_path) -> None:
 
     # Both emitters wrote parseable output with the expected header/rows.
     md_text = open(out_md, encoding="utf-8").read()
-    assert "| instance | m | n | nnz | status |" in md_text
+    assert "| instance | m | n | nnz | status | method |" in md_text
     for inst in ("afiro", "blend"):
         assert inst in md_text
         assert md_text.index(inst) < md_text.index("**Summary:**")
     csv_text = open(out_csv, encoding="utf-8").read()
     lines = csv_text.strip().splitlines()
-    assert lines[0].startswith("instance,m,n,nnz,status,iterations")
+    assert lines[0].startswith("instance,m,n,nnz,status,method,iterations,phase1_iters")
     assert len(lines) == 3  # header + 2 rows
 
 
@@ -77,8 +81,10 @@ def test_run_benchmark_verifies_against_highs() -> None:
     assert abs(float(ref.fun) - (-464.7531428571)) < 1e-9
 
 
-def test_pilot4_plain_folded_from_crossover_certificate(tmp_path) -> None:
-    """pilot4_plain is routed through the crossover certificate, not solve_lp."""
+def test_pilot4_plain_via_automatic_crossover(tmp_path) -> None:
+    """pilot4_plain is solved through the production path: the direct IPM
+    stalls and the automatic sparse-crossover fallback converges it
+    (``method == "crossover"``), reproducing the certified optimum + HiGHS."""
     out_md = os.path.join(tmp_path, "bm_p4.md")
     out_csv = os.path.join(tmp_path, "bm_p4.csv")
 
@@ -87,17 +93,21 @@ def test_pilot4_plain_folded_from_crossover_certificate(tmp_path) -> None:
         out_md=out_md,
         out_csv=out_csv,
         only=("pilot4_plain",),
-        skip_pilot4_highs=True,
+        skip_pilot87_highs=True,
     )
 
     assert len(rows) == 1
     r = rows[0]
     assert r["instance"] == "pilot4_plain"
-    assert r["status"] == "certified"
+    assert r["method"] == "crossover"
+    assert r["status"] == "optimal"
     assert r["pass"] is True
-    # Cross-reference: objective from cert matches the known crossover optimum.
+    assert r["phase1_iters"] and r["phase1_iters"] > 0
+    assert r["phase2_pivots"] and r["phase2_pivots"] > 0
+    # The production path reproduces the independently certified crossover
+    # optimum from artifacts/pilot4/p4_crossover_certificate.txt.
     assert abs(r["solver_objective"] - benchmark_netlib.PILOT4_OBJECTIVE) < 1e-6
-    assert r["rel_obj_error"] <= 1e-4
+    assert r["rel_obj_error"] <= benchmark_netlib.PASS_OBJ_TOL
 
 
 def test_pilot87_folded_from_strict_certificate(tmp_path) -> None:
@@ -116,6 +126,7 @@ def test_pilot87_folded_from_strict_certificate(tmp_path) -> None:
     assert len(rows) == 1
     r = rows[0]
     assert r["instance"] == "pilot87"
+    assert r["method"] == "certified"
     assert r["status"] == "certified"
     assert r["pass"] is True
     assert abs(r["solver_objective"] - benchmark_netlib.PILOT87_OBJECTIVE) < 1e-6
