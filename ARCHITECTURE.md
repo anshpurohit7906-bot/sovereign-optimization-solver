@@ -64,8 +64,15 @@ coordinates.  Two consequences are enforced in production:
   termination/best-iterate/H-cap regression coverage.
 - `tests/verify_with_highs.py` is a planned/external verifier path: it is for
   comparison and diagnostics, never a production solve engine.
-- `tests/run_benchmarks.py` is the planned benchmark harness: it records
-  benchmark status, iterations, objective, residuals, and runtime.
+- `tools/benchmark_netlib.py` is the Netlib benchmark harness: it solves every
+  `data/*.mps` instance through the production sparse path
+  (`load_numeric_mps(sparse=True)` -> `solve_lp`), cross-checks each objective
+  against SciPy HiGHS (`linprog(method="highs")`), and emits
+  `results/benchmark_netlib.md`/`.csv`.  PILOT87 is folded from its strict KKT
+  certificate rather than re-solved.  Run with `--only afiro blend` for a fast
+  smoke subset; `tests/test_benchmark_netlib_smoke.py` covers it.
+- `tests/run_benchmarks.py` is the older hardcoded-reference benchmark script,
+  superseded for reporting by `tools/benchmark_netlib.py`.
 
 ## Sparse crossover and PILOT87 certification
 

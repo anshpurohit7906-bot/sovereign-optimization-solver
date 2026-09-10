@@ -479,29 +479,27 @@ They are not used as the optimization engine.
 
 ### Netlib benchmark results
 
+`tools/benchmark_netlib.py` solves every `data/*.mps` instance through the
+production sparse path (`load_numeric_mps(sparse=True)` -> `solve_lp`) and
+cross-checks each objective against a fresh SciPy HiGHS oracle
+(`linprog(method="highs")`).  Report is regenerated to
+`results/benchmark_netlib.md`/`.csv`; latest run:
+
 ```text
-AFIRO
-  status                 = optimal
-  relative objective error = 8.51e-08
-
-SC205
-  status                 = optimal
-  relative objective error = 2.55e-08
-
-ADLITTLE
-  status                 = optimal
-  relative objective error = 4.91e-08
-
-SHARE2B
-  status                 = optimal
-  relative objective error = 1.54e-08
-
-BLEND
-  status                 = optimal
-  relative objective error = 5.83e-09
+instance       status      solver objective  HiGHS reference   rel obj err     rel_gap
+adlittle       optimal     225494.963156     225494.963162     2.95e-11        1.28e-10
+afiro          optimal     -464.753142659    -464.753142857     4.26e-10        3.76e-10
+blend          optimal     -30.812149660     -30.812149846      5.83e-09        6.39e-09
+pilot4_plain   stalled     -2581.089904      -2581.139259       1.91e-05        (best iterate)
+pilot87        certified   301.710347333     301.710347333      2.42e-13        (strict KKT cert)
+sc205          optimal     -52.202061205     -52.202061212      1.27e-10        3.99e-10
+share2b        optimal     -415.732240603    -415.732240741     3.31e-10        2.16e-10
 ```
 
-These results were reproduced from the current repository state. The canonical
+PILOT87's objective is folded from the independent strict KKT certificate
+(`artifacts/pilot87/p87_strict_certificate.txt`, |delta| = 1e-10), not from a
+direct interior-point solve of that hard instance; `pilot4_plain` is reported
+honestly as non-converged (best iterate, rel obj err 1.91e-05).  The canonical
 benchmark numbers for presentations should always come from the final frozen
 repository state.
 
