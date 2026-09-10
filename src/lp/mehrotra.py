@@ -600,6 +600,7 @@ def _max_step(v: np.ndarray, dv: np.ndarray) -> float:
 # ---------------------------------------------------------------------------
 def solve_standard_form(sf: StandardFormLP, *, tol: float = 1e-8, max_iter: int = 100,
                         tau: float = 0.995, mu_floor: float = 1e-12,
+                        crossover_fallback: bool = False,
                         verbose: bool = False) -> MehrotraResult:
     """Solve a ``StandardFormLP`` with Mehrotra's predictor-corrector method.
 
@@ -618,6 +619,13 @@ def solve_standard_form(sf: StandardFormLP, *, tol: float = 1e-8, max_iter: int 
         effective floor is ``mu_floor * max(1, ||b||_inf, ||c||_inf)``; once
         mu = x^T z / n reaches it, the trajectory is stopped instead of being
         driven deeper into the rounding-noise-dominated degenerate tail.
+    crossover_fallback : if True, attempt a sparse simplex crossover when the
+        IPM terminates in ``stalled`` or ``numerical_tail`` status.  The
+        crossover is only *triggered* when
+        ``best_merit <= CROSSOVER_MERIT_RATIO * tol`` (the IPM is already
+        near-optimal but cannot resolve the last dual residuals) and is only
+        *accepted* when all three of rel_primal, rel_dual, and rel_gap are
+        independently <= tol.
     verbose : print one progress line per iteration.
     """
     A, b, c = sf.A, sf.b, sf.c_min
@@ -927,6 +935,86 @@ def solve_standard_form(sf: StandardFormLP, *, tol: float = 1e-8, max_iter: int 
                 f"rel_gap={rel_gap:9.3e}  ap={a_p:6.4f}  ad={a_d:6.4f}  "
                 f"sigma={sigma:5.3f}  reg={'Y' if regularized else 'n'}"
             )
+
+    # ------------------------------------------------------------------
+    # Sparse crossover fallback: when the IPM terminates without full
+    # optimality (stalled / numerical_tail) AND the best merit is already
+    # within CROSSOVER_MERIT_RATIO of tol, attempt a full simplex
+    # crossover (all-artificial Phase I + Devex Phase II).  The crossover
+    # replaces the IPM iterate only when rel_primal/rel_dual/rel_gap are
+    # all independently <= tol.  The ratio only gates the expensive
+    # pre-execution trigger; acceptance never uses best_merit.
+    # ------------------------------------------------------------------
+    if crossover_fallback and status in ("stalled", "numerical_tail"):
+        try:
+            from crossover import crossover_from_ipm, CROSSOVER_MERIT_RATIO
+
+            # Pre-execution gate: skip crossover unless the IPM is already
+            # near-optimal.  This avoids running simplex on hopelessly
+            # infeasible stalled iterates.
+            fallback_candidate = (
+                crossover_fallback
+                and status in ("stalled", "numerical_tail")
+                and best_merit <= CROSSOVER_MERIT_RATIO * tol
+            )
+            if not fallback_candidate:
+                if verbose:
+                    print(f"  -> crossover skipped: best_merit={best_merit:.3e} "
+                          f"> CROSSOVER_MERIT_RATIO*tol="
+                          f"{CROSSOVER_MERIT_RATIO * tol:.3e}")
+            else:
+                if verbose:
+                    print(f"  -> attempting sparse crossover fallback "
+                          f"from status={status}")
+                cr = crossover_from_ipm(A, b, c,
+                                        verbose=500 if verbose else 0)
+                if cr.get("status") == "optimal":
+                    # Independently recompute original-coordinate residuals
+                    # and accept only if ALL three are <= tol.
+                    x_std_cr = unscale_solution(cr["x"], col_scale)
+                    y_orig_cr = row_scale * cr["y"]
+                    z_cr = c - A.T @ cr["y"]          # scaled dual slacks
+                    z_std_cr = z_cr / col_scale
+                    rel_p_cr = _inf_norm(sf.A @ x_std_cr - sf.b) / (1.0 + norm_b_orig)
+                    rel_d_cr = _inf_norm(sf.A.T @ y_orig_cr + z_std_cr - sf.c_min) / (1.0 + norm_c_orig)
+                    cx_cr = float(sf.c_min @ x_std_cr)
+                    by_cr = float(sf.b @ y_orig_cr)
+                    rel_gap_cr = abs(cx_cr - by_cr) / (1.0 + abs(cx_cr) + abs(by_cr))
+                    if rel_p_cr <= tol and rel_d_cr <= tol and rel_gap_cr <= tol:
+                        if verbose:
+                            print(f"  -> crossover ACCEPTED: "
+                                  f"rel_p={rel_p_cr:.3e}, rel_d={rel_d_cr:.3e}, "
+                                  f"rel_gap={rel_gap_cr:.3e} (all <= tol={tol:.3e})")
+                        x = cr["x"]
+                        y = cr["y"]
+                        z = z_cr
+                        prev_status = status
+                        status = "optimal"
+                        message = (
+                            f"sparse crossover from {prev_status}: "
+                            f"Phase I {cr['phase1']['iterations']} iters, "
+                            f"Phase II {cr['iterations']} pivots, "
+                            f"rel_p={rel_p_cr:.3e}, rel_d={rel_d_cr:.3e}, "
+                            f"rel_gap={rel_gap_cr:.3e}, "
+                            f"repairs={cr.get('repairs', 0)}, "
+                            f"soft_clamps={cr.get('soft_clamps', 0)}"
+                        )
+                    else:
+                        if verbose:
+                            print(f"  -> crossover REJECTED: "
+                                  f"rel_p={rel_p_cr:.3e}, rel_d={rel_d_cr:.3e}, "
+                                  f"rel_gap={rel_gap_cr:.3e} "
+                                  f"(any > tol={tol:.3e})")
+                else:
+                    if verbose:
+                        print(f"  -> crossover failed: status={cr.get('status')} "
+                              f"{cr.get('message', '')}")
+        except ImportError:
+            if verbose:
+                print("  -> crossover module not available; skipping fallback")
+        except Exception as exc:
+            if verbose:
+                print(f"  -> crossover exception: {exc}; skipping fallback")
 
     if verbose:
         print(f"  -> {status}: {message}")
