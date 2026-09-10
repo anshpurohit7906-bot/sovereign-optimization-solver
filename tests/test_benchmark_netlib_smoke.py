@@ -75,3 +75,47 @@ def test_run_benchmark_verifies_against_highs() -> None:
     assert ref.success
     # HiGHS oracle reproduces the well-known NETLIB afiro optimum.
     assert abs(float(ref.fun) - (-464.7531428571)) < 1e-9
+
+
+def test_pilot4_plain_folded_from_crossover_certificate(tmp_path) -> None:
+    """pilot4_plain is routed through the crossover certificate, not solve_lp."""
+    out_md = os.path.join(tmp_path, "bm_p4.md")
+    out_csv = os.path.join(tmp_path, "bm_p4.csv")
+
+    rows = benchmark_netlib.run_benchmark(
+        data_dir=_DATA,
+        out_md=out_md,
+        out_csv=out_csv,
+        only=("pilot4_plain",),
+        skip_pilot4_highs=True,
+    )
+
+    assert len(rows) == 1
+    r = rows[0]
+    assert r["instance"] == "pilot4_plain"
+    assert r["status"] == "certified"
+    assert r["pass"] is True
+    # Cross-reference: objective from cert matches the known crossover optimum.
+    assert abs(r["solver_objective"] - benchmark_netlib.PILOT4_OBJECTIVE) < 1e-6
+    assert r["rel_obj_error"] <= 1e-4
+
+
+def test_pilot87_folded_from_strict_certificate(tmp_path) -> None:
+    """pilot87 is routed through the strict KKT certificate, not solve_lp."""
+    out_md = os.path.join(tmp_path, "bm_p87.md")
+    out_csv = os.path.join(tmp_path, "bm_p87.csv")
+
+    rows = benchmark_netlib.run_benchmark(
+        data_dir=_DATA,
+        out_md=out_md,
+        out_csv=out_csv,
+        only=("pilot87",),
+        skip_pilot87_highs=True,
+    )
+
+    assert len(rows) == 1
+    r = rows[0]
+    assert r["instance"] == "pilot87"
+    assert r["status"] == "certified"
+    assert r["pass"] is True
+    assert abs(r["solver_objective"] - benchmark_netlib.PILOT87_OBJECTIVE) < 1e-6

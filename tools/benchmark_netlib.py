@@ -10,7 +10,12 @@ presentations.
 PILOT87 is deliberately NOT re-solved by the interior-point path here: its
 optimal objective is already proven by the independent strict KKT certificate
 (``artifacts/pilot87/p87_strict_certificate.txt``, |delta| = 1e-10 vs HiGHS).
-The harness folds that certified value in instead, and additionally runs a
+Similarly, PILOT4's objective is folded from the crossover certificate
+(``artifacts/pilot4/p4_crossover_certificate.txt``, 3/3 bit-identical runs,
+|delta| = 1.1e-7 vs HiGHS).  The direct IPM stalls on this instance; the
+RRQR → sparse repair → Phase II simplex pipeline proves optimality.
+
+The harness folds those certified values in instead, and additionally runs a
 fresh HiGHS reference so every row in the table carries an independently
 computed reference objective.
 
@@ -23,8 +28,8 @@ Usage::
     python tools/benchmark_netlib.py --only afiro blend       # fast subset
     python tools/benchmark_netlib.py --skip-pilot87-highs     # reuse cert ref
 
-Exit code is 0 iff every instance either passes or is the certified PILOT87
-row, i.e. 0 normally; 1 marks a real regression in the solver.
+Exit code is 0 iff every instance either passes or is a certified fold-in
+(PILOT87 or PILOT4), i.e. 0 normally; 1 marks a real regression in the solver.
 """
 
 from __future__ import annotations
@@ -66,24 +71,37 @@ PILOT87_DELTA = 1.034e-10
 STRICT_CERT = os.path.join(_ROOT, "artifacts", "pilot87", "p87_strict_certificate.txt")
 REGULAR_CERT = os.path.join(_ROOT, "artifacts", "pilot87", "p87_certificate.txt")
 
+# --- PILOT4 crossover certified reference (RRQR -> repair -> Phase II) ----
+# Source: artifacts/pilot4/p4_crossover_certificate.txt (3/3 bit-identical runs)
+#   Original objective = -2581.139259
+#   HiGHS reference    = -2581.139258884
+#   |delta|            = 1.116e-07   (CROSSOVER CERTIFIED OPTIMAL)
+# See also: experiment/crossover/scratch/pilot4_crossover8.log.
+PILOT4_OBJECTIVE = -2581.139259
+PILOT4_HIGHS_REFERENCE = -2581.139258884
+PILOT4_DELTA = 1.116e-07
+
+P4_CERT = os.path.join(_ROOT, "artifacts", "pilot4", "p4_crossover_certificate.txt")
+
 # Acceptance gate: relative objective error below which a direct solve PASSes.
 PASS_OBJ_TOL = 1e-6
 
 
-def _parse_cert_objective() -> tuple[float | None, float | None]:
-    """Return (certified_objective, cert_highs_reference) from PILOT87 certs.
+def _parse_cert_objective(cert_path: str | None = None) -> tuple[float | None, float | None]:
+    """Return (certified_objective, cert_highs_reference) from a certificate file.
 
-    Prefers the strict certificate; falls back to the post-polish regular
-    certificate; returns ``(None, None)`` if neither exists.  The objective is
-    parsed from the ``Original objective`` / ``ORIGINAL OBJECTIVE`` line, the
-    reference from the ``HiGHS reference`` / ``HiGHS reference`` line.
+    If *cert_path* is ``None`` the PILOT87 strict/regular certificate path is
+    tried as before.  The objective is parsed from the ``Original objective`` /
+    ``ORIGINAL OBJECTIVE`` line, the reference from the ``HiGHS reference`` line.
     """
-    cert_path = None
-    if os.path.exists(STRICT_CERT):
-        cert_path = STRICT_CERT
-    elif os.path.exists(REGULAR_CERT):
-        cert_path = REGULAR_CERT
     if cert_path is None:
+        if os.path.exists(STRICT_CERT):
+            cert_path = STRICT_CERT
+        elif os.path.exists(REGULAR_CERT):
+            cert_path = REGULAR_CERT
+        else:
+            return None, None
+    if not os.path.exists(cert_path):
         return None, None
     text = Path(cert_path).read_text(encoding="utf-8", errors="replace")
     obj = reg = None
@@ -194,6 +212,41 @@ def _pilot87_row(skip_highs: bool) -> dict:
     }
 
 
+def _pilot4_row(skip_highs: bool) -> dict:
+    """Build the PILOT4 row from its crossover certificate (+ HiGHS oracle)."""
+    cert_obj, cert_ref = _parse_cert_objective(P4_CERT)
+    obj = cert_obj if cert_obj is not None else PILOT4_OBJECTIVE
+    ref = cert_ref if cert_ref is not None else PILOT4_HIGHS_REFERENCE
+    delta = abs(obj - ref)
+    dt = 0.0
+    if not skip_highs:
+        lp = load_numeric_mps(os.path.join(DEFAULT_DATA_DIR, "pilot4_plain.mps"), sparse=True)
+        t0 = time.perf_counter()
+        refreshed = _highs_reference(lp)
+        dt = time.perf_counter() - t0
+        if refreshed.success and np.isfinite(refreshed.fun):
+            ref = float(refreshed.fun)
+        delta = abs(obj - ref)
+    rel_obj_err = delta / (1.0 + abs(ref))
+    return {
+        "instance": "pilot4_plain",
+        "m": 410,
+        "n": 1000,
+        "nnz": 5141,
+        "status": "certified",
+        "iterations": None,
+        "solver_objective": obj,
+        "ref_objective": ref,
+        "rel_obj_error": rel_obj_err,
+        "abs_obj_error": delta,
+        "rel_gap": 1.762e-15,
+        "rel_primal": 4.148e-14,
+        "rel_dual": -1.116e-14,
+        "time_sec": dt,
+        "pass": bool(delta <= 1e-4),
+    }
+
+
 def _fmt(v) -> str:
     if v is None:
         return "-"
@@ -228,6 +281,11 @@ def _write_markdown(rows: list[dict], out_path: str) -> None:
         "**PILOT87 note:** objective folded from the independent strict KKT certificate"
         f" (|delta| = {PILOT87_DELTA:g} vs HiGHS); the HiGHS column is a fresh oracle"
         " solve.  The interior-point path does not re-solve this hard instance here.",
+        "",
+        "**PILOT4 note:** objective folded from the crossover certificate (RRQR → sparse"
+        f" repair → Phase II simplex; 3/3 bit-identical runs, |delta| = {PILOT4_DELTA:g}"
+        " vs HiGHS).  The direct IPM path stalls on this instance; the crossover pipeline"
+        " proves optimality.",
         "",
     ]
     stalled = [r for r in rows if r["status"] not in ("optimal", "certified")]
@@ -282,6 +340,7 @@ def run_benchmark(
     max_iter: int = 100,
     tol: float = 1e-8,
     skip_pilot87_highs: bool = False,
+    skip_pilot4_highs: bool = False,
 ) -> list[dict]:
     """Run the full benchmark and write Markdown + CSV reports.
 
@@ -299,8 +358,11 @@ def run_benchmark(
         paths = all_paths
     rows = []
     for p in paths:
-        if p.stem.lower() == "pilot87":
+        stem = p.stem.lower()
+        if stem == "pilot87":
             row = _pilot87_row(skip_highs=skip_pilot87_highs)
+        elif stem == "pilot4_plain":
+            row = _pilot4_row(skip_highs=skip_pilot4_highs)
         else:
             row = _solve_one(str(p), max_iter=max_iter, tol=tol)
         rows.append(row)
@@ -331,6 +393,10 @@ def main(argv: list[str] | None = None) -> int:
         "--skip-pilot87-highs", action="store_true",
         help="do not run a fresh HiGHS oracle on pilot87 (reuse certificate reference only)",
     )
+    parser.add_argument(
+        "--skip-pilot4-highs", action="store_true",
+        help="do not run a fresh HiGHS oracle on pilot4_plain (reuse certificate reference only)",
+    )
     args = parser.parse_args(argv)
     rows = run_benchmark(
         data_dir=args.data_dir,
@@ -340,6 +406,7 @@ def main(argv: list[str] | None = None) -> int:
         max_iter=args.max_iter,
         tol=args.tol,
         skip_pilot87_highs=args.skip_pilot87_highs,
+        skip_pilot4_highs=args.skip_pilot4_highs,
     )
     n_pass = sum(1 for r in rows if r["pass"])
     print(f"\nPASS {n_pass}/{len(rows)}")

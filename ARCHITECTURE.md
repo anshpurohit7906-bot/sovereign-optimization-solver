@@ -69,8 +69,9 @@ coordinates.  Two consequences are enforced in production:
   (`load_numeric_mps(sparse=True)` -> `solve_lp`), cross-checks each objective
   against SciPy HiGHS (`linprog(method="highs")`), and emits
   `results/benchmark_netlib.md`/`.csv`.  PILOT87 is folded from its strict KKT
-  certificate rather than re-solved.  Run with `--only afiro blend` for a fast
-  smoke subset; `tests/test_benchmark_netlib_smoke.py` covers it.
+  certificate and PILOT4 from its crossover certificate (RRQR → repair → Phase II;
+  3/3 bit-identical runs), rather than re-solved.  Run with `--only afiro blend`
+  for a fast smoke subset; `tests/test_benchmark_netlib_smoke.py` covers it.
 - `tests/run_benchmarks.py` is the older hardcoded-reference benchmark script,
   superseded for reporting by `tools/benchmark_netlib.py`.
 

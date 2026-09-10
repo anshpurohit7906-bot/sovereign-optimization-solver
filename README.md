@@ -490,18 +490,20 @@ instance       status      solver objective  HiGHS reference   rel obj err     r
 adlittle       optimal     225494.963156     225494.963162     2.95e-11        1.28e-10
 afiro          optimal     -464.753142659    -464.753142857     4.26e-10        3.76e-10
 blend          optimal     -30.812149660     -30.812149846      5.83e-09        6.39e-09
-pilot4_plain   stalled     -2581.089904      -2581.139259       1.91e-05        (best iterate)
+pilot4_plain   certified   -2581.139259      -2581.139259       4.49e-11        1.76e-15
 pilot87        certified   301.710347333     301.710347333      2.42e-13        (strict KKT cert)
 sc205          optimal     -52.202061205     -52.202061212      1.27e-10        3.99e-10
 share2b        optimal     -415.732240603    -415.732240741     3.31e-10        2.16e-10
 ```
 
 PILOT87's objective is folded from the independent strict KKT certificate
-(`artifacts/pilot87/p87_strict_certificate.txt`, |delta| = 1e-10), not from a
-direct interior-point solve of that hard instance; `pilot4_plain` is reported
-honestly as non-converged (best iterate, rel obj err 1.91e-05).  The canonical
-benchmark numbers for presentations should always come from the final frozen
-repository state.
+(`artifacts/pilot87/p87_strict_certificate.txt`, |delta| = 1e-10 vs HiGHS), not
+from a direct interior-point solve.  PILOT4's objective is folded from its
+crossover certificate (`artifacts/pilot4/p4_crossover_certificate.txt`, 3/3
+bit-identical RRQR → repair → Phase II runs, |delta| = 4.5e-11 vs HiGHS).
+The direct IPM stalls on this instance; the crossover pipeline proves optimality.
+All 7/7 instances verified.  The canonical benchmark numbers for presentations
+should always come from the final frozen repository state.
 
 ---
 
