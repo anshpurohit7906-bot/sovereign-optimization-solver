@@ -71,11 +71,13 @@ src/                  production LP core (parser, numerical model, Mehrotra IPM,
                       linear system, scaling) — do not modify solver behavior
 tests/                production regression + edge-case test suite
 data/                 MPS benchmark inputs (afiro.mps, pilot87.mps, ...)
-experiment/           isolated research: crossover, pdhg, mcc, regularization, ...
-tools/certification/  independent KKT certificate + strict-polish scripts
+tools/                benchmark harness + certification scripts
+  tools/benchmark_netlib.py        Netlib LP benchmark vs HiGHS reference
+  tools/certification/            independent KKT certificate + strict-polish
+experiment/           isolated research: crossover, pdhg, sparse, gpu, ...
+results/              generated benchmark/experiment reports (markdown + csv)
 artifacts/pilot87/    validated PILOT87 results (npz + certificates)
 archive/              historical research, superseded experiments, logs
-docs/                 (future) design documents
 ```
 
 ---

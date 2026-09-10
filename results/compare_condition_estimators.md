@@ -1,0 +1,117 @@
+# Sparse Condition Estimator vs Dense Cond2
+
+**Date:** 2026-09-04 16:35:57
+
+## Objective
+
+Replace the dense `cond2_estimate(B)` -> `B.toarray()` -> `np.linalg.cond()` in Phase II with a sparse Hager/Higham 1-norm condition estimator that uses only sparse LU solves.
+
+## A. Small-Matrix Validation (dense reference)
+
+The estimator is validated on small dense matrices where exact cond1 and cond2 can be computed.
+
+| Matrix | n | cond2 | cond1_exact | cond1_est | est/exact | est/cond2 | solves |
+|--------|---|-------|-------------|-----------|---------|----------|--------|
+| random_well_conditioned | 50 | 4.159e+01 | 3.416e+02 | 4.287e+03 | 12.549 | 103.077 | 5 |
+| hilbert_ill_conditioned | 20 | 1.033e+19 | 3.410e+19 | 1.744e+19 | 0.512 | 1.688 | 7 |
+| diagonal | 5 | 1.000e+06 | 1.000e+06 | 1.000e+06 | 1.000 | 1.000 | 5 |
+| near_singular | 30 | 1.000e+10 | 6.978e+10 | 6.679e+11 | 9.572 | 66.790 | 5 |
+| identity | 40 | 1.000e+00 | 1.000e+00 | 1.000e+00 | 1.000 | 1.000 | 5 |
+| upper_triangular | 40 | 4.511e+10 | 2.814e+11 | 4.508e+11 | 1.602 | 9.993 | 5 |
+
+## B. Real Basis Comparison (PILOT4 & PILOT87)
+
+Basis matrices captured during Phase II at representative points (0%, 25%, 50%, 75%, 100%).
+
+### PILOT4_PLAIN
+
+| it | frac | nnz | cond2_exact | cond1_est | ratio | log10(c2) | log10(c1) | solves | est_time | dense_time |
+|----|------|-----|-------------|-----------|------|-----------|-----------|-------|---------|------------|
+| 0 | 0% | 4,165 | 1.251e+05 | 1.268e+06 | 10.138 | 5.10 | 6.10 | 7 | 0.000385 | 0.061362 |
+| 1500 | 50% | 4,242 | 1.354e+05 | 2.306e+06 | 17.036 | 5.13 | 6.36 | 7 | 0.000383 | 0.055307 |
+| 2250 | 75% | 4,254 | 1.355e+05 | 2.231e+06 | 16.463 | 5.13 | 6.35 | 7 | 0.000360 | 0.049342 |
+| 3000 | 100% | 4,233 | 1.257e+05 | 1.667e+06 | 13.259 | 5.10 | 6.22 | 7 | 0.000530 | 0.049794 |
+| 750 | 25% | 4,248 | 1.353e+05 | 1.457e+06 | 10.770 | 5.13 | 6.16 | 7 | 0.000352 | 0.051115 |
+
+### PILOT87
+
+| it | frac | nnz | cond2_exact | cond1_est | ratio | log10(c2) | log10(c1) | solves | est_time | dense_time |
+|----|------|-----|-------------|-----------|------|-----------|-----------|-------|---------|------------|
+| 0 | 0% | 36,200 | 2.831e+04 | 1.053e+07 | 372.068 | 4.45 | 7.02 | 5 | 0.002004 | 13.258885 |
+| 12500 | 50% | 37,765 | 1.133e+05 | 3.244e+07 | 286.408 | 5.05 | 7.51 | 5 | 0.002964 | 12.851401 |
+| 18750 | 75% | 38,156 | 2.376e+05 | 4.678e+07 | 196.875 | 5.38 | 7.67 | 7 | 0.003240 | 12.431549 |
+| 25000 | 100% | 38,916 | 7.165e+04 | 2.753e+07 | 384.203 | 4.86 | 7.44 | 7 | 0.003736 | 11.922235 |
+| 6250 | 25% | 37,312 | 2.060e+04 | 7.432e+06 | 360.791 | 4.31 | 6.87 | 5 | 0.002192 | 11.991285 |
+
+## C. Estimator Accuracy Summary
+
+- **ratio = cond1_est / cond2_exact**
+  - min: 10.1384
+  - max: 384.2029
+  - mean: 166.8009
+  - median: 106.9552
+  - cond1_est >= cond2_exact in 10/10 cases
+
+## D. Runtime / Cost
+
+- **Estimator (sparse) mean time:** 1.615 ms
+- **Dense cond2 mean time:** 6272.227 ms
+- **LU factorization mean time:** 16.330 ms
+- **Speedup (dense / estimator):** 3884.5x
+- **Memory saved per call:** ~104 MB (dense m x m allocation eliminated)
+
+- **Estimator solves per call:** 6.4 (all sparse triangular, no allocation)
+
+## E. Condition-Gate Decision Equivalence
+
+Simulating the Phase II feasibility gate from `p87_phase2_v2.py`:
+
+```
+if min_xB >= -tol:        -> no_action
+elif min_xB >= -eff_tol:  -> soft_clamp (clamp to 0)
+else:                     -> repair (Phase I restart)
+```
+
+where `eff_tol = kappa * eps * ||b|| * 50.0`
+
+- **Decisions match:** 10/10
+
+**No decision mismatches.** The sparse estimator would produce identical gate decisions in all tested cases.
+
+### Effective Tolerance Comparison
+
+| model | iter | eff_tol_exact | eff_tol_est | ratio |
+|-------|------|---------------|-------------|------|
+| pilot4_plain | 0 | 1.000e-07 | 1.000e-07 | 1.0000 |
+| pilot4_plain | 1500 | 1.000e-07 | 1.000e-07 | 1.0000 |
+| pilot4_plain | 2250 | 1.000e-07 | 1.000e-07 | 1.0000 |
+| pilot4_plain | 3000 | 1.000e-07 | 1.000e-07 | 1.0000 |
+| pilot4_plain | 750 | 1.000e-07 | 1.000e-07 | 1.0000 |
+| pilot87 | 0 | 1.000e-07 | 1.000e-07 | 1.0000 |
+| pilot87 | 12500 | 1.000e-07 | 1.000e-07 | 1.0000 |
+| pilot87 | 18750 | 1.000e-07 | 1.000e-07 | 1.0000 |
+| pilot87 | 25000 | 1.000e-07 | 1.000e-07 | 1.0000 |
+| pilot87 | 6250 | 1.000e-07 | 1.000e-07 | 1.0000 |
+
+## F. Conclusion
+
+### Estimator reliability for the safety gate
+
+- Gate decisions identical in **10/10** cases.
+- cond1_est/cond2 ratio: 10.138 -- 384.203 (mean 166.801)
+
+### Runtime improvement
+
+- Mean estimator time: 1.615 ms
+- Mean dense cond2 time: 6272.227 ms
+- Speedup: **3884.5x**
+- Dense 2D allocation per call: eliminated
+
+### Dense 2D allocation elimination
+
+- The estimator **never calls** `B.toarray()`, `np.linalg.cond()`, or `np.linalg.inv()`.
+- All computation uses sparse SuperLU factorization and triangular solves.
+- Memory: 0 MB dense allocation (vs ~104 MB per cond2 call for m=3608).
+
+---
+*Generated by `experiment/sparse/compare_condition_estimators.py`*

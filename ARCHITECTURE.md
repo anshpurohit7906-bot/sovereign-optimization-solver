@@ -38,12 +38,6 @@ data/*.mps
   `h_max = O(1/mu)`) imposed on degenerate tails.
 - `src/scaling.py` provides the existing row/column scaling used by production
   Mehrotra; it is not an experimental tuning surface.
-- `src/pdhg_mixed.py` is a separate NumPy mixed E/L PDHG prototype.  It keeps
-  equality duals free, L-row duals nonnegative, and projects variable bounds.
-  It is not the current production solving path.
-- `src/pdhg_lp_solver.py` is the older all-`Ax <= b, x >= 0` toy PDHG reference
-  and demonstration.  It is useful for algorithm comparison, not for mixed
-  MPS production models.
 
 ## Termination and best-iterate policy (Mehrotra)
 
@@ -128,10 +122,12 @@ correction solves (0, 1, or 2).
   should solve or standardize models.
 - `mehrotra.py` owns standard-form conversion and production solve control;
   `linear_system.py` owns only factorizations and Newton solves.
-- `pdhg_lp_solver.py` and `pdhg_mixed.py` overlap as PDHG implementations.
-  The former has a narrower all-inequality contract; the latter supersedes it
-  for mixed E/L/bounded prototypes.  They should remain clearly labelled
-  reference/prototype code until one is selected.
+- `src/simplex.py` provides an independent two-phase Revised Simplex solver on
+  the same standard-form representation, so the project can maintain multiple LP
+  algorithms.  It is not the default production solving path (Mehrotra IPM is).
+- The PDHG prototypes (`pdhg_mixed.py`, `pdhg_lp_solver.py`, and the PDHG/PDLP
+  variants) now live under `experiment/pdhg/` and are reference/prototype code,
+  not production dependencies of `src/lp/mehrotra.py`.
 - The Mehrotra and PDHG paths both consume `NumericalLP`, but intentionally
   use different formulations: Mehrotra converts to standard form, whereas
   mixed PDHG uses original E/L rows directly.  Solver-specific conversions

@@ -1,0 +1,3 @@
+model,dense_status,sparse_status,dense_objective,sparse_objective,dense_iterations,sparse_iterations,dense_primal,sparse_primal,dense_dual,sparse_dual,dense_rel_gap,sparse_rel_gap,dense_runtime,sparse_runtime,obj_max_abs_diff,primal_max_abs_diff,dual_max_abs_diff,comp_max_abs_diff,conclusion
+pilot4_plain,stalled,stalled,-2581.11,-2581.31,72,69,1.633146e-01,2.657248e-01,6.157665e-06,5.637608e-06,1.083146e-05,1.856195e-05,2.8462,0.4260,4.991060e-05,3.633229e-09,2.276287e-05,1.174291e-03,SIMILAR trajectories -> init was primary cause
+pilot87,stalled,stalled,301.745,301.745,63,63,3.465809e-06,3.465811e-06,3.114117e-06,3.114117e-06,3.527385e-06,3.527912e-06,83.5282,24.1363,1.932676e-12,5.773160e-15,2.097896e-15,5.267467e-10,IDENTICAL trajectories -> init was the cause

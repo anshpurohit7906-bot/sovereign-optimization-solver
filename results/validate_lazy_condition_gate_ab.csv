@@ -1,0 +1,3 @@
+problem,match,status_current,status_lazy,iter_current,iter_lazy,obj_current,obj_lazy,cond2_current,cond2_lazy,saved_calls,saved_pct,cond2_time_current_s,cond2_time_lazy_s,cond2_iter_current,cond2_iter_lazy,max_stale_iters_current,max_stale_iters_lazy,stale_eff_iters,mismatches
+SMALL,Y,optimal,optimal,2,2,0.000000000,0.000000000,1,1,0,0.0,0.0000,0.0000,0,0,6,6,0,
+PILOT87,Y,LU_FAIL@2983,LU_FAIL@2983,2983,2983,323.931437889,323.931437889,15,1,14,93.3,165.3000,0.0000,15,1,199,199,0,

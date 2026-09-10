@@ -1,0 +1,3 @@
+path,method,rrqr_time_s,rrqr_dense_mem_mb,rrqr_peak_mem_mb,phase1_status,phase1_iterations,phase1_time_s,phase1_peak_mem_mb,basis_size,resid,neg_basics,obj_phase1,valid
+A,RRQR (dense) then Phase I,,232.008832,568.191728,feasible,16346,,5.748794,3608,1.829647544582258e-12,,,True
+B,All-artificial directly (no RRQR),,0.0,0.0,feasible,16346,,5.720402,3608,1.829647544582258e-12,,,True
