@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Optional
 import numpy as np
 import scipy.sparse as sp
+from scipy.sparse.linalg import eigsh
 
 
 class QPValidationError(ValueError):
@@ -36,18 +37,28 @@ class QPProblem:
         n = self.q.size
         if self.P.shape != (n, n):
             raise QPValidationError(f"P must have shape {(n,n)}, got {self.P.shape}")
-        P_dense = self.P.toarray() if sp.issparse(self.P) else self.P
-        if not np.all(np.isfinite(P_dense)) or not np.all(np.isfinite(self.q)):
-            raise QPValidationError("P and q must be finite")
-        if not np.allclose(P_dense, P_dense.T, rtol=1e-9, atol=1e-12):
-            raise QPValidationError("P must be symmetric")
-        self.P = (0.5 * (self.P + self.P.T)).tocsr() if sp.issparse(self.P) else 0.5 * (self.P + self.P.T)
+
+        if sp.issparse(self.P):
+            if not np.all(np.isfinite(self.P.data)) or not np.all(np.isfinite(self.q)):
+                raise QPValidationError("P and q must be finite")
+            delta = (self.P - self.P.T).tocsr()
+            if delta.nnz and np.max(np.abs(delta.data)) > 1e-9:
+                raise QPValidationError("P must be symmetric")
+            self.P = (0.5 * (self.P + self.P.T)).tocsr()
+        else:
+            if not np.all(np.isfinite(self.P)) or not np.all(np.isfinite(self.q)):
+                raise QPValidationError("P and q must be finite")
+            if not np.allclose(self.P, self.P.T, rtol=1e-9, atol=1e-12):
+                raise QPValidationError("P must be symmetric")
+            self.P = 0.5 * (self.P + self.P.T)
+
         self.G = _arr(self.G, sparse=sp.issparse(self.G))
         self.A = _arr(self.A, sparse=sp.issparse(self.A))
         self.h = None if self.h is None else _arr(self.h).reshape(-1)
         self.b = None if self.b is None else _arr(self.b).reshape(-1)
         self.lb = None if self.lb is None else _arr(self.lb).reshape(-1)
         self.ub = None if self.ub is None else _arr(self.ub).reshape(-1)
+
         if self.G is not None:
             if self.G.shape[1] != n or self.h is None or self.G.shape[0] != self.h.size:
                 raise QPValidationError("G/h dimensions are inconsistent")
@@ -69,22 +80,37 @@ class QPProblem:
     @property
     def n(self): return self.q.size
     @property
-    def m_ineq(self):
-        return 0 if self.G is None else self.G.shape[0]
+    def m_ineq(self): return 0 if self.G is None else self.G.shape[0]
     @property
-    def m_eq(self):
-        return 0 if self.A is None else self.A.shape[0]
+    def m_eq(self): return 0 if self.A is None else self.A.shape[0]
     @property
     def is_sparse(self):
-        return sp.issparse(self.G) or sp.issparse(self.A)
+        return sp.issparse(self.P) or sp.issparse(self.G) or sp.issparse(self.A)
 
     def check_convexity(self, tol=1e-9):
-        P_dense = self.P.toarray() if sp.issparse(self.P) else self.P
-        eig = np.linalg.eigvalsh(P_dense)
-        scale = max(1.0, np.max(np.abs(P_dense)))
-        if eig.min() < -tol * scale:
-            raise QPValidationError(f"P is not positive semidefinite; min eigenvalue={eig.min():.3e}")
-        return float(eig.min())
+        if self.n == 0:
+            raise QPValidationError("QP must contain at least one variable")
+        if sp.issparse(self.P):
+            if self.n == 1:
+                eig_min = float(self.P[0, 0])
+            else:
+                try:
+                    eig_min = float(eigsh(self.P, k=1, which="SA",
+                                          return_eigenvectors=False,
+                                          tol=1e-8, maxiter=max(1000, 5*self.n))[0])
+                except Exception as e:
+                    raise QPValidationError(
+                        f"sparse PSD check failed without densifying P: {e}"
+                    ) from e
+        else:
+            eig_min = float(np.linalg.eigvalsh(self.P)[0])
+        scale = max(1.0, float(np.max(np.abs(self.P.data)))
+                     if sp.issparse(self.P) else float(np.max(np.abs(self.P))))
+        if eig_min < -tol * scale:
+            raise QPValidationError(
+                f"P is not positive semidefinite; min eigenvalue={eig_min:.3e}"
+            )
+        return eig_min
 
     def objective(self, x):
         x = np.asarray(x, dtype=float)
@@ -117,5 +143,7 @@ class QPProblem:
         if not rows:
             return None, None
         if sparse_mode:
-            return sp.vstack([r if sp.issparse(r) else sp.csr_matrix(r) for r in rows], format='csr'), np.concatenate(rhs)
+            return sp.vstack([
+                r if sp.issparse(r) else sp.csr_matrix(r) for r in rows
+            ], format="csr"), np.concatenate(rhs)
         return np.vstack(rows), np.concatenate(rhs)
