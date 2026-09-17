@@ -319,6 +319,13 @@ def run_milp_segment() -> bool:
     print(f"    Nodes explored:   {milp_res.nodes_explored}")
     print(f"    LP solves:        {milp_res.lp_solves}")
     print(f"    Time:             {dt:.3f}s")
+    print(f"    Heur. attempts:   {milp_res.heuristic_attempts}")
+    heur_found = (milp_res.heuristic_successes or 0) > 0
+    print(f"    Heur. incumbent:  {'yes' if heur_found else 'no'} "
+          f"(found={milp_res.heuristic_successes}, "
+          f"repair solves={milp_res.heuristic_lp_solves})")
+    if milp_res.heuristic_best_objective is not None:
+        print(f"    Best heur. obj:   {milp_res.heuristic_best_objective:.4f}")
     if milp_res.x is not None:
         print(f"    Solution x:       {np.round(milp_res.x[:4], 1)} (crudes)")
         print(f"    Selection y:      {np.round(milp_res.x[4:8], 0).astype(int)} (selected crudes)")

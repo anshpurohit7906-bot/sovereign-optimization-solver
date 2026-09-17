@@ -6,7 +6,7 @@ Produces a structured LPModel suitable for later conversion to sparse matrices.
 from __future__ import annotations
 import sys
 from dataclasses import dataclass, field
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Set
 
 
 class MPSParseError(Exception):
@@ -39,6 +39,7 @@ class LPModel:
     obj: List[float] = field(default_factory=list)       # objective coefficients
     bounds_lb: List[float] = field(default_factory=list) # lower bounds
     bounds_ub: List[float] = field(default_factory=list) # upper bounds
+    is_integer: List[bool] = field(default_factory=list) # integer/binary variables
 
     # Sparse coefficients: (var_idx, row_idx) -> value
     # Suitable for CSR/CSC conversion later.
@@ -83,11 +84,13 @@ class MPSParser:
         self._obj_coeffs: Dict[str, float] = {}  # col -> objective coeff
         self._rhs: Dict[str, float] = {}         # row_name -> rhs value
         self._bounds: Dict[str, Tuple[float, float]] = {}  # col -> (lb, ub)
+        self._integer_vars: Set[str] = set()     # variable names marked as integer
 
         # State
         self._section: str = ""
         self._line_num: int = 0
         self._rhs_vector_name: str = ""          # first RHS vector name encountered
+        self._in_integer_section: bool = False   # between INTORG and INTEND
 
     # ------------------------------------------------------------------
     # Tokenizer
@@ -183,16 +186,21 @@ class MPSParser:
         # "    MARKER  'MARKER'  'INTORG'"), not as a section header, so
         # they must be caught here rather than in the header-detection loop.
         if "'MARKER'" in fields and ("'INTORG'" in fields or "'INTEND'" in fields):
-            raise MPSParseError(
-                f"Line {self._line_num}: Integer variable markers "
-                "(MARKER/INTORG/INTEND) are not implemented by this parser."
-            )
+            if "'INTORG'" in fields:
+                self._in_integer_section = True
+            elif "'INTEND'" in fields:
+                self._in_integer_section = False
+            return
 
         if len(fields) < 3:
             raise MPSParseError(f"Line {self._line_num}: COLUMNS entry too short: {fields}")
 
         col_name = fields[0]
         self._cols.setdefault(col_name, None)
+
+        # If we're in an integer section, mark this variable as integer
+        if self._in_integer_section:
+            self._integer_vars.add(col_name)
 
         # Process up to two (row, value) pairs per line
         pairs = []
@@ -281,7 +289,7 @@ class MPSParser:
         """
         BOUNDS section: each line is:
           bound_type  bound_name  col_name  [value]
-        Supported types: LO, UP, FX, FR, MI, PL.
+        Supported types: LO, UP, FX, FR, MI, PL, BV, LI, UI.
         """
         if len(fields) < 3:
             raise MPSParseError(f"Line {self._line_num}: BOUNDS entry too short: {fields}")
@@ -319,6 +327,18 @@ class MPSParser:
             lb = float("-inf")
         elif bound_type == "PL":
             ub = float("inf")
+        elif bound_type == "BV":
+            lb = 0.0
+            ub = 1.0
+            self._integer_vars.add(col_name)  # binary variable
+        elif bound_type == "LI":
+            # Integer lower bound - variable is integer
+            lb = int(value)
+            self._integer_vars.add(col_name)
+        elif bound_type == "UI":
+            # Integer upper bound - variable is integer
+            ub = int(value)
+            self._integer_vars.add(col_name)
         else:
             raise MPSParseError(
                 f"Line {self._line_num}: Unsupported bound type '{bound_type}' for column '{col_name}'"
@@ -437,6 +457,8 @@ class MPSParser:
                 lb, ub = 0.0, float("inf")
             model.bounds_lb.append(lb)
             model.bounds_ub.append(ub)
+            # Integer/binary tracking
+            model.is_integer.append(v in self._integer_vars)
 
         # Coefficients: convert names to integer indices
         for (col_name, row_name), val in self._coeffs.items():

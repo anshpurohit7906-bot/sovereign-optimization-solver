@@ -35,6 +35,7 @@ class NumericalLP:
     row_types: tuple[str, ...]
     var_names: tuple[str, ...]
     row_names: tuple[str, ...]
+    is_integer: tuple[bool, ...] = ()  # integer/binary variables; empty = all continuous
 
     @property
     def num_vars(self) -> int:
@@ -105,6 +106,7 @@ def to_sparse_numeric(model: LPModel) -> NumericalLP:
         row_types=tuple(model.row_types),
         var_names=tuple(model.var_names),
         row_names=tuple(model.row_names),
+        is_integer=tuple(model.is_integer) if model.is_integer else tuple(),
     )
 
 
@@ -157,6 +159,7 @@ def to_numeric(model: LPModel) -> NumericalLP:
         row_types=tuple(model.row_types),
         var_names=tuple(model.var_names),
         row_names=tuple(model.row_names),
+        is_integer=tuple(model.is_integer) if model.is_integer else tuple(),
     )
 
 
