@@ -413,6 +413,34 @@ The experiments are useful for algorithmic comparison and for future large-scale
 
 ---
 
+# GPU Backend (LP/Mehrotra, opt-in)
+
+An optional CUDA/CuPy backend accelerates the Mehrotra reduced-Newton
+system.  It is **explicitly opt-in** and never the default:
+
+```python
+from lp.mehrotra import solve_lp
+r = solve_lp(lp, backend="gpu")    # raises MehrotraError without CUDA/CuPy
+r = solve_lp(lp, backend="auto")   # GPU when available, else CPU fallback
+r = solve_lp(lp)                   # backend="cpu" (default, unchanged)
+```
+
+Install (in addition to `requirements.txt`):
+
+```bash
+python -m pip install -r requirements-gpu.txt   # cupy-cuda12x>=13.0
+```
+
+**Current limitation (documented, intentional):** the GPU path is a
+**dense Schur-complement** implementation (`src/lp/gpu_linear_system.py`):
+`S = A diag(1/h) A^T` is assembled and Cholesky-factorized on the device
+with up to two iterative-refinement corrections.  It is *not* a sparse CUDA
+factorization, so for large/sparse Netlib-class models the sparse CPU
+backend (SuperLU on the Schur complement) remains the production path.
+The GPU backend requires a strictly positive, finite diagonal `H` (always
+true inside the Mehrotra iteration).  CuPy is imported lazily; CPU-only
+environments run OPTICORE normally without it.
+
 # QP Support (canonical sparse package: `src/qp/`)
 
 `src/qp/` is the **canonical QP implementation**: a sparse-capable convex-QP

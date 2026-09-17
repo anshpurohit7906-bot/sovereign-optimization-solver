@@ -101,6 +101,20 @@ from linear_system import (  # noqa: E402
 from numerical_model import NumericalLP, load_numeric_mps  # noqa: E402
 from scaling import scale_lp, unscale_solution  # noqa: E402
 
+
+def _gpu_available() -> bool:
+    """True only when a CUDA-capable CuPy device is present.
+
+    Lazy import on purpose: the GPU backend is optional and must not make
+    ``mehrotra`` (or anything importing it) require CuPy in CPU-only
+    environments.
+    """
+    try:
+        from gpu_linear_system import gpu_available
+    except Exception:  # pragma: no cover - defensive, import is guarded
+        return False
+    return gpu_available()
+
 __all__ = [
     "MehrotraError",
     "StandardFormLP",
@@ -601,7 +615,7 @@ def _max_step(v: np.ndarray, dv: np.ndarray) -> float:
 def solve_standard_form(sf: StandardFormLP, *, tol: float = 1e-8, max_iter: int = 100,
                         tau: float = 0.995, mu_floor: float = 1e-12,
                         crossover_fallback: bool = False,
-                        verbose: bool = False) -> MehrotraResult:
+                        verbose: bool = False, backend: str = "cpu") -> MehrotraResult:
     """Solve a ``StandardFormLP`` with Mehrotra's predictor-corrector method.
 
     The iterations run in row/column-equilibrated coordinates produced by
@@ -627,7 +641,24 @@ def solve_standard_form(sf: StandardFormLP, *, tol: float = 1e-8, max_iter: int 
         *accepted* when all three of rel_primal, rel_dual, and rel_gap are
         independently <= tol.
     verbose : print one progress line per iteration.
+    backend : ``"cpu"`` (default — unchanged behavior), ``"gpu"`` (explicit
+        opt-in to the optional CUDA/CuPy reduced-Newton backend, which raises
+        ``MehrotraError`` when no CUDA-capable device is available), or
+        ``"auto"`` (use the GPU backend only when CuPy/CUDA is available,
+        otherwise silently fall back to the CPU backend).  The GPU backend
+        is a dense Schur implementation (see ``gpu_linear_system``); the
+        sparse CPU path remains the production backend for large models.
     """
+    backend = backend.lower().strip()
+    if backend == "auto":
+        backend = "gpu" if _gpu_available() else "cpu"
+    if backend not in {"cpu", "gpu"}:
+        raise ValueError("backend must be 'cpu', 'gpu', or 'auto'")
+    if backend == "gpu" and not _gpu_available():
+        raise MehrotraError(
+            "GPU backend requested but no CUDA-capable CuPy device is available"
+        )
+
     A, b, c = sf.A, sf.b, sf.c_min
     m, n = A.shape
     if mu_floor <= 0.0:
@@ -865,12 +896,17 @@ def solve_standard_form(sf: StandardFormLP, *, tol: float = 1e-8, max_iter: int 
                            f"barrier h = z/x is not positive finite at iteration {k}")
 
         try:
-            fac = factor_reduced_system(h, A)
+            fac = factor_reduced_system(h, A, backend=backend)
         except LinearSystemError as exc:
             return _finish("numerical_failure",
                            f"Newton factorization failed at iteration {k}: {exc}")
 
-        if fac.schur_reg is not None and fac.A_sp is not None:
+        if backend == "gpu":
+            # GPU factorization: report the regularization the GPU backend
+            # actually applied (its H-floor and Schur diagonal seed).
+            regularized = bool(getattr(fac, "h_reg", 0.0) > 0.0
+                               or getattr(fac, "schur_reg", 0.0) > 1.5e-12)
+        elif fac.schur_reg is not None and fac.A_sp is not None:
             diag_scale = max(1.0, float(np.mean(fac.A_sp.power(2).dot(1.0 / fac.h_diag))))
             regularized = fac.schur_reg > 1.5e-12 * diag_scale
         else:
@@ -1022,7 +1058,11 @@ def solve_standard_form(sf: StandardFormLP, *, tol: float = 1e-8, max_iter: int 
 
 
 def solve_lp(lp: NumericalLP, *, maximize: bool = False, **kwargs) -> MehrotraResult:
-    """Convert ``lp`` to standard form and solve it in one call."""
+    """Convert ``lp`` to standard form and solve it in one call.
+
+    Accepts every ``solve_standard_form`` keyword, including the optional
+    ``backend`` selection (``"cpu"`` default, ``"gpu"`` opt-in, ``"auto"``).
+    """
     return solve_standard_form(to_standard_form(lp, maximize=maximize), **kwargs)
 
 
