@@ -69,6 +69,8 @@ workflow.
 ```text
 src/                  production LP core (parser, numerical model, Mehrotra IPM,
                       linear system, scaling) — do not modify solver behavior
+src/qp/               canonical sparse convex QP package (Mehrotra IPM on the
+                      inequality-form KKT; QPS/SIF reader; KKT certificates)
 tests/                production regression + edge-case test suite
 data/                 MPS benchmark inputs (afiro.mps, pilot87.mps, ...)
 tools/                benchmark harness + certification scripts
@@ -410,6 +412,52 @@ The PDHG path is intentionally separated from the current primary LP implementat
 The experiments are useful for algorithmic comparison and for future large-scale/GPU-oriented work, but current results should not be presented as equivalent to the verified Mehrotra LP core.
 
 ---
+
+# QP Support (canonical sparse package: `src/qp/`)
+
+`src/qp/` is the **canonical QP implementation**: a sparse-capable convex-QP
+Mehrotra predictor-corrector interior point method operating on the native
+inequality-form KKT system.
+
+```
+src/qp/problem.py         QPProblem: sparse P/q/G/h/A/b/lb/ub + validation,
+                          sparse PSD check via eigsh (no densification)
+src/qp/solver.py          solve_qp(): Mehrotra predictor-corrector IPM,
+                          best-iterate restore, per-iteration history
+src/qp/linear_system.py   solve_kkt(): sparse SPLU saddle-point backend
+                          [[H+eI, A'], [A, -eI]] + dense fallback
+src/qp/verify.py          certificate(): independent KKT certificate
+                          (stationarity incl. scaled variant, feasibility,
+                          dual sign, complementarity)
+src/qp/qps.py             read_qps(): Maros–Mészáros QPS/SIF reader
+src/qp/benchmark.py       deterministic sparse QP generator (seed 26119)
+                          + NPZ suite writer + benchmark runner
+src/qp/io.py              NPZ save/load for QP problems
+```
+
+Legacy path: **`src/lp/qp.py` is retained unchanged** as the standard-form
+compatibility slice (E/L/G rows + bounds → standard form, dense KKT,
+active-set polish). It has its own tests (`tests/test_qp_skeleton.py`).
+New callers should prefer `src.qp.solve_qp`; `src/lp/qp.py` will be
+migrated or retired in a later, deliberate PR.
+
+Run the QP test suite:
+
+```bash
+python -m pytest tests/test_qp_sparse.py tests/test_qps_reader.py
+```
+
+Maros–Mészáros benchmark (SIF datasets are fetched, never committed):
+
+```bash
+python scripts/download_maros_qp.py     # fetches SIF files into data/qp/
+python tools/benchmark_maros.py         # writes reports/maros_qp_benchmark.csv
+python tools/benchmark_maros.py --include-generated
+```
+
+GPU: **not integrated in this stage.** A dense CuPy KKT backend exists in
+the teammate drop and is planned as a follow-up; the CPU paths above are
+the only active backends.
 
 # MPS Support
 
