@@ -435,9 +435,20 @@ def _build_integer_candidates(
     """Generate a small, bounded set of candidate integer assignments.
 
     Returns a list of candidate vectors (each a copy) with integer variables
-    fixed to specific values.  The first candidate is always nearest-round.
-    The remaining candidates try floor/ceil on the top-3 most fractional
-    variables while rounding everything else.  At most 7 candidates total.
+    fixed to specific values.  Candidates, in order:
+
+    1. nearest-round of every integer variable (always first);
+    2. round-DOWN-all / round-UP-all of the fractional variables while the
+       non-fractional ones keep their nearest rounding (two structurally
+       different global candidates -- nearest-only rounding fails on
+       equality-structured instances where every variable must move the
+       same way);
+    3. floor/ceil flips of the most-fractional variables (top-6), all other
+       variables nearest-rounded.
+
+    At most 15 candidates total.  Every candidate is subsequently validated
+    by the integer-fixing repair LP, so a bad candidate costs only its
+    bounded re-solve, never correctness.
     """
     x_base = x_lp.copy()
     for i in int_idx:
@@ -447,8 +458,15 @@ def _build_integer_candidates(
     if frac_vars.size == 0:
         return candidates
 
+    # Global directional candidates: everything down / everything up.
+    for target_fn in (np.floor, np.ceil):
+        cand = x_base.copy()
+        for j in frac_vars:
+            cand[j] = np.clip(target_fn(x_lp[j]), lb[j], ub[j])
+        candidates.append(cand)
+
     frac_vals = np.abs(x_lp[frac_vars] - np.round(x_lp[frac_vars]))
-    top_k = min(3, frac_vars.size)
+    top_k = min(6, frac_vars.size)
     top_idx = frac_vars[np.argsort(-frac_vals)[:top_k]]
 
     for j in top_idx:
@@ -458,6 +476,7 @@ def _build_integer_candidates(
             candidates.append(cand)
 
     return candidates
+
 
 
 def _repair_via_continuous_lp(
@@ -567,6 +586,7 @@ def _rounding_heuristic(
     int_tol: float = 1e-6,
     stats: "dict | None" = None,
     deadline: "Optional[float]" = None,
+    incumbent: float = float("inf"),
 ) -> tuple:
     """Try to produce an integer-feasible solution from the LP relaxation.
 
@@ -578,6 +598,14 @@ def _rounding_heuristic(
        production solver.  Independently verified before return.
     3. Greedy one-flip rounding.
     4. Randomised feasibility-pump rounding for ``max_rounds`` iterations.
+
+    Improvement gate: ``incumbent`` (min-form) is the current best objective.
+    A candidate is accepted EARLY only when it strictly improves it
+    (``obj < incumbent - 1e-12``); otherwise the best verified-feasible
+    candidate is returned and the caller applies its own improvement gate.
+    This lets periodic heuristic calls keep trying floor/ceil variants even
+    after the nearest rounding is already feasible-but-not-improving, while
+    never spending more than the bounded candidate list allows.
 
     The heuristic never affects correctness; failure means no incumbent found.
 
@@ -620,10 +648,18 @@ def _rounding_heuristic(
     x_rd = x_lp.copy()
     for i in int_idx:
         x_rd[i] = np.clip(np.round(x_lp[i]), lb[i], ub[i])
-    if _check_feasibility(A, b, row_types, x_rd, tol=int_tol * 10):
+    rounding_ok = _check_feasibility(A, b, row_types, x_rd, tol=int_tol * 10)
+    if rounding_ok:
         obj = float(c_min @ x_rd)
-        _record(obj)
-        return True, x_rd, obj
+        if obj < incumbent - 1e-12:
+            # Strict improvement over the current incumbent: accept now.
+            _record(obj)
+            return True, x_rd, obj
+        # Feasible but not improving: remember as a fallback and still try
+        # the repair candidates for something better.
+        best_alt = (x_rd, obj)
+    else:
+        best_alt = None
 
     # --- 2. Integer-fixing repair via continuous LP re-solve ---
     frac_vars = int_idx[
@@ -641,9 +677,20 @@ def _rounding_heuristic(
                 lp, cand, integer_mask, int_tol=int_tol, stats=stats,
                 deadline=deadline,
             )
-            if ok:
+            if not ok:
+                continue
+            if obj_repaired < incumbent - 1e-12:
+                # Strict improvement over the current incumbent: accept.
                 _record(obj_repaired)
                 return True, x_repaired, obj_repaired
+            # Verified-feasible but not improving: keep the best and let the
+            # caller decide (it applies the same improvement gate).
+            if best_alt is None or obj_repaired < best_alt[1]:
+                best_alt = (x_repaired, obj_repaired)
+
+    if best_alt is not None:
+        _record(best_alt[1])
+        return True, best_alt[0], best_alt[1]
 
     if frac_vars.size == 0:
         return False, x_rd, float(c_min @ x_rd)
@@ -921,6 +968,7 @@ def solve_milp(
             x_root, mask, lb0, ub0, A_heuristic, b_dense,
             lp_rel.row_types, c_dense, lp=lp_rel, int_tol=int_tol,
             stats=heuristic_stats, deadline=deadline,
+            incumbent=incumbent,
         )
         if h_feas and h_obj < incumbent - 1e-12:
             incumbent = h_obj
@@ -1031,6 +1079,7 @@ def solve_milp(
                     x, mask, lb, ub, A_heuristic, b_dense,
                     lp_rel.row_types, c_dense, lp=lp_rel, int_tol=int_tol,
                     stats=heuristic_stats, deadline=deadline,
+                    incumbent=incumbent,
                 )
                 if h_feas and h_obj < incumbent - 1e-12:
                     incumbent = h_obj
