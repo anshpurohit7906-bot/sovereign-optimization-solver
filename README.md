@@ -6,7 +6,7 @@ A from-scratch optimization engine being developed for SIH 26119. The long-term 
 
 The implementation is independently developed from mathematical foundations. Existing solvers such as HiGHS, PDLP/OR-Tools, and NVIDIA cuOpt may be studied as architectural, numerical, or benchmarking references, but they are not used as the optimization engine.
 
-> **Current milestone:** establish a numerically reliable LP foundation before expanding into QP, MILP, large-scale sparse computation, and GPU acceleration.
+> **Current milestone:** the numerically reliable LP foundation (Mehrotra IPM + sparse CPU backend + crossover/certification) is established. Canonical sparse QP (`src/qp/`), a native MILP branch-and-bound prototype with verified incumbent heuristic, and an opt-in CUDA/CuPy Mehrotra reduced-Newton backend are implemented. Current work focuses on sparse end-to-end flow, stronger MILP, presolve, and sparse GPU acceleration.
 
 ---
 
@@ -67,15 +67,23 @@ workflow.
 ## Repository Layout
 
 ```text
-src/                  production LP core (parser, numerical model, Mehrotra IPM,
-                      linear system, scaling) — do not modify solver behavior
+src/                  production core: parser, numerical model, Mehrotra IPM,
+                      linear system (+ opt-in CUDA/CuPy backend), scaling,
+                      crossover, MILP branch-and-bound
 src/qp/               canonical sparse convex QP package (Mehrotra IPM on the
                       inequality-form KKT; QPS/SIF reader; KKT certificates)
-tests/                production regression + edge-case test suite
+tests/                production regression + edge-case test suite (incl.
+                      test_qp_sparse.py, test_qps_reader.py, test_milp_*,
+                      test_gpu_backend.py)
 data/                 MPS benchmark inputs (afiro.mps, pilot87.mps, ...)
 tools/                benchmark harness + certification scripts
   tools/benchmark_netlib.py        Netlib LP benchmark vs HiGHS reference
+  tools/benchmark_maros.py         Maros–Mészáros QP benchmark (SIF fetched, never committed)
+  tools/benchmark_miplib.py        MIPLIB MILP benchmark harness
+  tools/validate_milp_incumbent.py direct B&B validation + independent incumbent check
   tools/certification/            independent KKT certificate + strict-polish
+scripts/download_maros_qp.py      fetches QP SIF files into data/qp/
+requirements-gpu.txt  optional CUDA/CuPy backend (cupy; CPU-only runs need nothing extra)
 experiment/           isolated research: crossover, pdhg, sparse, gpu, ...
 results/              generated benchmark/experiment reports (markdown + csv)
 artifacts/pilot87/    validated PILOT87 results (npz + certificates)
@@ -118,7 +126,10 @@ The project has also explored Revised Simplex and several PDHG/PDLP-style approa
   - SOS
   - QUADOBJ
   - INDICATORS
+- Integer-variable support:
   - integer MARKER / INTORG / INTEND constructs
+  - binary (BV) and general-integer (LI/UI) bound types
+  - mixed-integer models feed the native MILP branch-and-bound
 - Numerical LP representation
 - Equality (`E`), less-than (`L`), and greater-than (`G`) constraint handling
 - Standard-form LP conversion
@@ -132,24 +143,34 @@ The project has also explored Revised Simplex and several PDHG/PDLP-style approa
 - Mehrotra predictor-corrector primal-dual interior-point method
 - Dense Cholesky linear-system backend
 - Sparse CSR + SuperLU Schur-complement linear-system backend
+- Opt-in CUDA/CuPy dense-Schur reduced-Newton backend (`src/lp/gpu_linear_system.py`;
+  `backend="cpu"` default unchanged, `"gpu"` explicit, `"auto"` GPU-with-CPU-fallback)
 - Fraction-to-boundary step control
 - Numerical safeguards and finite-value checks
 - Residual-based convergence testing
 - Scale-aware numerical-tail detection
 - Best-trusted-iterate preservation
 - Escalating diagonal regularization
+- Validated sparse crossover pipeline (RRQR basis identification → sparse
+  Phase I → sparse Phase II → strict reduced-cost polish → independent KKT
+  certificate; the path behind the verified PILOT87 result)
+- Canonical sparse convex QP package (`src/qp/`: inequality-form Mehrotra IPM,
+  sparse SPLU saddle-point backend, independent KKT certificate, QPS/SIF reader;
+  legacy dense standard-form slice `src/lp/qp.py` retained for compatibility)
+- Native MILP branch-and-bound prototype (`src/lp/branch_bound.py`: LP
+  relaxations, node management, pruning, diversified verified rounding
+  heuristic for incumbent generation — every incumbent is independently
+  re-verified before acceptance)
 - Experimental / secondary Revised Simplex implementation
 - Experimental PDHG/PDLP research implementations
 
 ### Not Yet Implemented
 
-- QP
-- MILP / branch-and-bound
-- Integer-variable parsing and handling
-- Full end-to-end sparse LP data flow
+- Full end-to-end sparse LP data flow (numerical model and several
+  standard-form transformations still use dense matrices)
 - Presolve and advanced reductions
-- GPU acceleration
 - Parallel linear algebra
+- Sparse (as opposed to dense-Schur) GPU acceleration
 - Advanced sparse ordering
 - Formal infeasibility and unboundedness certificates
 - Production-grade algorithm-selection / dispatch layer
@@ -176,7 +197,9 @@ Mehrotra Predictor-Corrector IPM
  │
  ├── Dense Cholesky backend
  │
- └── Sparse CSR + SuperLU Schur backend
+ └── Sparse CSR + SuperLU Schur backend (production default)
+  │
+  └── Dense-Schur CUDA/CuPy backend (opt-in, backend="gpu"/"auto")
  │
  ▼
 MehrotraResult
@@ -428,8 +451,17 @@ r = solve_lp(lp)                   # backend="cpu" (default, unchanged)
 Install (in addition to `requirements.txt`):
 
 ```bash
-python -m pip install -r requirements-gpu.txt   # cupy-cuda12x>=13.0
+python -m pip install -r requirements-gpu.txt   # optional (installation compatibility
+                                                # note: requirements-gpu.txt pins cupy-cuda12x>=13.0;
+                                                # on CUDA 13.x hosts install cupy-cuda13x instead)
 ```
+
+Verified on real hardware: CuPy 14.2.0 + NVIDIA GeForce RTX 3050 Laptop GPU
+(`gpu_available() == True`). The deterministic CPU-vs-GPU LP test
+(`tests/test_gpu_backend.py::test_deterministic_lp_cpu_vs_gpu_match`) **passed**.
+On this CUDA-capable machine the GPU test module reports 7 passed with 2 expected
+skips (the no-GPU fallback/failure-path tests, which only apply without CUDA/CuPy);
+on CPU-only machines the 2 skips are instead the GPU-requiring tests.
 
 **Current limitation (documented, intentional):** the GPU path is a
 **dense Schur-complement** implementation (`src/lp/gpu_linear_system.py`):
@@ -483,9 +515,33 @@ python tools/benchmark_maros.py         # writes reports/maros_qp_benchmark.csv
 python tools/benchmark_maros.py --include-generated
 ```
 
-GPU: **not integrated in this stage.** A dense CuPy KKT backend exists in
-the teammate drop and is planned as a follow-up; the CPU paths above are
-the only active backends.
+Current validation: **5/6 Maros–Mészáros instances certify optimal** through the
+independent KKT certificate. **QSHIP12S (n=2763) currently reaches
+`max_iterations`** after 200 iterations — an honest limitation of the current
+QP iteration budget/regularization on this instance, not a regression.
+
+# MILP Support (native branch-and-bound prototype: `src/lp/branch_bound.py`)
+
+A from-scratch branch-and-bound implementation solves the LP relaxation at
+each node (production Mehrotra path), with node management, pruning, and a
+**diversified verified rounding heuristic** for incumbent generation: a small
+bounded set of rounded integer candidates (global down/up plus top-k
+floor/ceil flips) is generated from each relaxation, repaired through a
+fix-integers → re-solve continuous LP step, and **accepted only after an
+independent feasibility re-check** (rows, bounds, integrality, objective).
+Global deadline and node limits are respected; statuses (`optimal`,
+`node_limit`, `time_limit`) are reported honestly.
+
+```bash
+python -m pytest tests/test_milp_skeleton.py tests/test_milp_robustness.py   # 28 MILP tests
+python tools/validate_milp_incumbent.py pk1 2000 45      # direct B&B validation + independent check
+```
+
+Current validation: `pk1` improves 18.000 → **17.000** via the heuristic;
+`mas74` holds **14075.45**; **50v-10 reaches `node_limit` with a verified
+feasible incumbent 7002.77 and a substantial remaining gap (bound 2962.88,
+rel. gap ≈ 0.577)** — MILP remains a prototype, not a commercial-grade solver.
+No cuts, strong branching, warm starts, or parallelism are implemented.
 
 # MPS Support
 
@@ -517,13 +573,21 @@ FX
 FR
 MI
 PL
+BV
+LI
+UI
 ```
+
+Integer MARKER / INTORG / INTEND constructs in COLUMNS are supported and mark
+the enclosed variables integer; BV, LI, and UI bound types likewise mark
+variables binary/integer. Mixed-integer models feed the MILP branch-and-bound.
 
 Unsupported advanced MPS constructs are now **rejected explicitly** rather than silently ignored.
 
-This is particularly important for constructs such as RANGES and integer markers: the parser must never construct a different mathematical problem without informing the user.
+This is particularly important for constructs such as RANGES: the parser must never construct a different mathematical problem without informing the user.
 
-Full MILP/MPS support is planned as part of the future MILP phase.
+RANGES, SOS, QUADOBJ, and INDICATORS remain rejected (covered by
+`tests/test_mps_parser_hardening.py`).
 
 ---
 
@@ -548,10 +612,21 @@ They are not used as the optimization engine.
 
 ### Production tests
 
-* `pytest tests/`: **14/14 passed**
-* edge-case suite: **19/19 passed**
-* Netlib: **5/5 passed**
-* HiGHS oracle: **19/19 matched**
+* `pytest tests/`: **167 passed, 2 skipped** (2 skips are hardware-conditional
+  GPU tests; on CPU-only machines the GPU-requiring tests skip, on CUDA/CuPy
+  machines the no-GPU fallback/failure-path tests skip instead)
+* MILP: **28/28 passed** (`tests/test_milp_skeleton.py` + `tests/test_milp_robustness.py`)
+* New QP: **17 QP tests** (`tests/test_qp_sparse.py` — 16, `tests/test_qps_reader.py` — 1)
+* GPU: **7 passed, 2 expected skips** on CPU-only CI
+  (`tests/test_gpu_backend.py` — the 2 skips are the no-GPU fallback/failure-path
+  tests on CUDA-capable machines, and the GPU-requiring tests on CPU-only
+  machines); on the verified RTX 3050 + CuPy 14.2.0
+  machine the deterministic CPU-vs-GPU LP comparison passed
+* Netlib LP benchmark: **7/7 verified** (see table below)
+* Maros–Mészáros QP: **5/6 certify optimal** (QSHIP12S reaches `max_iterations`)
+
+> The older counts previously listed here (14/14, 19/19, 5/5) described an
+> earlier repository state and are superseded by the numbers above.
 
 ### Netlib benchmark results
 
@@ -629,20 +704,38 @@ The project follows a strict rule:
 ```text
 sovereign-optimization-solver/
 │
-├── src/                          # production LP core
-│   ├── mps_parser.py             # MPS subset parser → LPModel
+├── src/                          # production core (LP + MILP + QP)
+│   ├── mps_parser.py             # MPS parser → LPModel (incl. integer MARKER/BV/LI/UI)
 │   ├── numerical_model.py        # LPModel → NumericalLP arrays
 │   ├── scaling.py                # row/column equilibration
 │   ├── constraint_form.py
-│   └── lp/
-│       ├── linear_system.py       # Newton factorizations / solves
-│       ├── mehrotra.py            # production IPM solver
-│       └── simplex.py             # experimental Revised Simplex
+│   ├── lp/
+│   │   ├── linear_system.py       # Newton factorizations / solves (sparse CPU + GPU dispatch)
+│   │   ├── gpu_linear_system.py   # opt-in dense-Schur CUDA/CuPy backend
+│   │   ├── mehrotra.py            # production IPM solver (backend="cpu"/"gpu"/"auto")
+│   │   ├── qp.py                  # legacy dense standard-form QP slice (compatibility)
+│   │   ├── branch_bound.py        # native MILP branch-and-bound prototype
+│   │   ├── crossover.py           # sparse crossover pipeline
+│   │   └── simplex.py             # experimental Revised Simplex
+│   └── qp/                       # canonical sparse convex QP package
+│       ├── problem.py            # QPProblem (sparse P/q/G/h/A/b/lb/ub, sparse PSD check)
+│       ├── solver.py             # solve_qp(): inequality-form Mehrotra IPM
+│       ├── linear_system.py      # sparse SPLU saddle-point backend + dense fallback
+│       ├── verify.py             # independent KKT certificate
+│       ├── qps.py                # Maros–Mészáros QPS/SIF reader
+│       ├── benchmark.py          # deterministic QP generator (seed 26119) + runner
+│       └── io.py                 # NPZ save/load
 │
 ├── tests/                        # production regression + edge-case suite
 │   ├── test_mps_parser_hardening.py
 │   ├── test_lp_edge_cases.py
 │   ├── test_mehrotra_reporting.py
+│   ├── test_qp_skeleton.py        # legacy src/lp/qp.py slice
+│   ├── test_qp_sparse.py          # canonical src/qp/ suite (16 tests)
+│   ├── test_qps_reader.py         # QPS/SIF reader test
+│   ├── test_milp_skeleton.py      # MILP prototype tests
+│   ├── test_milp_robustness.py
+│   ├── test_gpu_backend.py        # GPU graceful-fallback + CPU-vs-GPU tests
 │   ├── run_benchmarks.py
 │   └── verify_with_highs.py
 │
@@ -656,10 +749,17 @@ sovereign-optimization-solver/
 │   └── newton_diagnostics/
 │
 ├── tools/
+│   ├── benchmark_netlib.py       # Netlib LP benchmark vs HiGHS reference
+│   ├── benchmark_maros.py        # Maros–Mészáros QP benchmark (SIF fetched, never committed)
+│   ├── benchmark_miplib.py       # MIPLIB MILP benchmark harness
+│   ├── validate_milp_incumbent.py # direct B&B validation + independent incumbent check
 │   └── certification/            # independent KKT certificate + strict polish
 │       ├── p87_certify.py
 │       ├── p87_strict_polish.py
 │       └── README.md
+│
+├── scripts/
+│   └── download_maros_qp.py      # fetches QP SIF files into data/qp/
 │
 ├── artifacts/
 │   └── pilot87/                  # validated PILOT87 results (npz + certificates)
@@ -668,7 +768,7 @@ sovereign-optimization-solver/
 │   ├── research/
 │   └── root/
 │
-├── data/                         # MPS benchmark inputs
+├── data/                         # benchmark inputs (MPS; QP SIF fetched, never committed)
 │   ├── afiro.mps
 │   ├── sc205.mps
 │   ├── adlittle.mps
@@ -679,6 +779,7 @@ sovereign-optimization-solver/
 │
 ├── requirements.txt
 ├── requirements-dev.txt
+├── requirements-gpu.txt          # optional (installation compatibility note: pins cupy-cuda12x>=13.0; CUDA 13.x hosts: cupy-cuda13x)
 ├── ARCHITECTURE.md
 └── README.md
 ```
@@ -689,15 +790,20 @@ sovereign-optimization-solver/
 
 # Current Limitations
 
-The project is a research/prototype optimization engine rather than a production commercial solver.
+The project is a research/prototype optimization engine rather than a production commercial solver. It is not presented as a replacement for CPLEX, Gurobi, or other commercial solvers.
 
 Current limitations include:
 
-* incomplete end-to-end sparse data flow
+* incomplete end-to-end sparse data flow (numerical model and several
+  standard-form transformations still use dense matrices)
 * no presolve
-* no QP
-* no MILP
-* no GPU implementation
+* MILP remains a prototype: no cuts, no strong branching, no warm starts, no
+  parallelism; hard instances terminate honestly at `node_limit`/`time_limit`
+  with a remaining gap (e.g. 50v-10 currently reaches `node_limit` with a
+  verified feasible incumbent 7002.77, bound 2962.88, rel. gap ≈ 0.577)
+* GPU backend is **dense Schur**, not sparse CUDA factorization; for
+  large/sparse models the sparse CPU backend remains the production path
+* QSHIP12S (Maros–Mészáros, n=2763) currently reaches `max_iterations`
 * no parallel linear algebra
 * incomplete infeasibility/unboundedness certification
 * Revised Simplex still requires further numerical work
@@ -714,18 +820,19 @@ These limitations are deliberate and documented rather than hidden.
 
 The development strategy is staged.
 
-## Phase 1 — Reliable LP Foundation
+## Phase 1 — Reliable LP Foundation ✅ COMPLETE
 
 * stabilize Mehrotra IPM
 * strengthen numerical safeguards
 * improve standard-form conversion
 * harden MPS parsing
-* validate against standard LP benchmarks
-* establish reproducible regression tests
+* validate against standard LP benchmarks (Netlib 7/7 verified)
+* establish reproducible regression tests (167 passed, 2 hardware-conditional skips)
 
-## Phase 2 — Sparse & Large-Scale LP
+## Phase 2 — Sparse & Large-Scale LP (CURRENT — in progress)
 
-* preserve sparsity from model ingestion onward
+* preserve sparsity from model ingestion onward (sparse CPU backend done;
+  dense transformations remain in the numerical model / standard-form path)
 * sparse standard-form construction
 * sparse scaling
 * improve Newton-system formulations
@@ -748,27 +855,42 @@ LP Model ────────┼── Revised Simplex
 
 Algorithm-selection rules will be derived from measured behavior on the project's benchmark suite rather than assumed solely from textbook classifications.
 
-## Phase 4 — QP
+## Phase 4 — QP ✅ COMPLETE (canonical package implemented)
 
-Extend the numerical foundation to convex Quadratic Programming while preserving the LP architecture where appropriate.
+Canonical sparse convex QP package implemented in `src/qp/` (inequality-form
+Mehrotra IPM, sparse SPLU saddle-point backend, independent KKT certificate,
+QPS/SIF reader; 17 QP tests; Maros–Mészáros 5/6 certify optimal with QSHIP12S
+at `max_iterations`). Legacy dense standard-form slice `src/lp/qp.py` retained
+for compatibility. Future QP work: iteration-budget/regularization tuning for
+hard instances (QSHIP12S), sparse QP-GPU path.
 
-## Phase 5 — MILP
+## Phase 5 — MILP ✅ PROTOTYPE (current — strengthening in progress)
 
-Add:
+Implemented:
 
-* integer-variable parsing
-* branch-and-bound
-* node management
-* LP relaxation solving
-* incumbent management
-* pruning
+* integer-variable parsing (MARKER/INTORG/INTEND, BV/LI/UI bounds)
+* native branch-and-bound (`src/lp/branch_bound.py`)
+* node management, LP relaxation solving, pruning
+* diversified verified rounding heuristic for incumbent generation
+  (28 MILP tests passing; pk1 18.000 → 17.000; 50v-10 verified incumbent with
+  remaining gap)
+
+Future MILP work:
+
+* presolve and bound tightening
 * cutting-plane infrastructure where justified
+* stronger branching and node selection
+* warm starts
+* parallelism
 
-## Phase 6 — GPU Acceleration
+## Phase 6 — GPU Acceleration ✅ INITIAL BACKEND (current — sparse GPU future)
 
-Investigate GPU acceleration only where profiling demonstrates a meaningful benefit.
+An opt-in dense-Schur CUDA/CuPy backend for the Mehrotra reduced-Newton system
+is implemented (`src/lp/gpu_linear_system.py`; verified on RTX 3050 + CuPy
+14.2.0 with a passing deterministic CPU-vs-GPU LP test) and validated
+against the CPU implementation rather than assumed faster.
 
-Potential targets include:
+Future GPU work:
 
 * sparse matrix-vector operations
 * first-order methods
@@ -776,7 +898,9 @@ Potential targets include:
 * parallel preprocessing
 * batched computations
 
-The GPU implementation will be benchmarked against the CPU implementation rather than assuming that GPU execution is automatically faster.
+The GPU implementation will be validated against the CPU implementation (no GPU-vs-CPU
+performance benchmark has been performed yet) rather than assuming that GPU execution
+is automatically faster.
 
 ---
 
