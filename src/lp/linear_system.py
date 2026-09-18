@@ -134,7 +134,7 @@ class ReducedNewtonFactorization:
 
 
 def factor_reduced_system(
-    H: np.ndarray, A_eq: np.ndarray, reg: float = 1e-12
+    H: np.ndarray, A_eq: np.ndarray, reg: float = 1e-12, backend: str = "cpu"
 ) -> ReducedNewtonFactorization:
     """Factor H and, when equality rows exist, the Schur complement.
 
@@ -151,6 +151,12 @@ def factor_reduced_system(
     reg : base regularization scale.  The H-regularization is
           ``ρ_p = reg * max(1, mean|h|)`` capped at ``MAX_RHO_P``; the same
           ``reg`` seeds the Schur diagonal regularization in ``_splu_regularized``.
+    backend : ``"cpu"`` (default, unchanged sparse/dense behavior) or
+          ``"gpu"`` (optional CUDA/CuPy backend, see ``gpu_linear_system``).
+          The GPU backend is dense-Schur and opt-in only; ``backend="auto"``
+          is resolved by the caller (``mehrotra.solve_standard_form``),
+          never here.  The CuPy import is lazy: CPU-only environments are
+          unaffected unless they explicitly request ``backend="gpu"``.
 
     H regularization rationale
     -------------------------
@@ -177,6 +183,16 @@ def factor_reduced_system(
     a μ-proportional scheme performed worse empirically because the scaled μ is
     large early, and a fixed small cap already keeps the bias bounded.
     """
+    backend = backend.lower().strip()
+    if backend not in {"cpu", "gpu"}:
+        raise ValueError("backend must be 'cpu' or 'gpu'")
+    if backend == "gpu":
+        # Lazy import: CuPy/CUDA is optional; CPU-only environments never
+        # touch this path.  Raises GPUBackendError when CUDA is unavailable
+        # or the diagonal H is not strictly positive/finite.
+        from gpu_linear_system import factor_reduced_system_gpu
+        return factor_reduced_system_gpu(H, A_eq, reg=reg)
+
     if H.ndim == 1:
         diag = H
         is_diagonal = True
@@ -253,6 +269,11 @@ def solve_reduced_system(
     fac: ReducedNewtonFactorization, rhs_x: np.ndarray, rhs_eq: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray]:
     """Solve the reduced Newton system for (dx, dyE) using a factorization."""
+    if getattr(fac, "h_gpu", None) is not None:
+        # GPU backend (backend="gpu"): dispatch to the CuPy factorization.
+        # Lazy import; the factorization already validated CUDA availability.
+        from gpu_linear_system import solve_reduced_system_gpu
+        return solve_reduced_system_gpu(fac, rhs_x, rhs_eq)
     if fac.h_diag is not None:
         # Sparse backend: diagonal H -> elementwise solves (identical to the
         # dense chol(diag) solves), sparse Schur solve via the SuperLU factors.

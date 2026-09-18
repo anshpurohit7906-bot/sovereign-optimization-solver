@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "opticore"
+version = "0.1.0"
+description = "OPTICORE - indigenous LP solver (SIH 26119)"
+requires-python = ">=3.10"
+dependencies = ["numpy", "scipy"]
+
+[project.scripts]
+opticore = "opticore:main"
+
+[tool.setuptools]
+py-modules = ["opticore"]

@@ -22,6 +22,11 @@ artifacts/
 # Working scratch / log files
 scratch/
 
+# Generated QP benchmark artifacts and Maros–Mészáros SIF datasets
+# (fetched via scripts/download_maros_qp.py; never committed as source)
+data/qp/
+reports/
+
 # Historical research archive (not part of active pipeline)
 archive/
 

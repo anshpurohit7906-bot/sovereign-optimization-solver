@@ -1,0 +1,2 @@
+instance,variables,constraints,binaries,general_integers,continuous,nnz,status,objective,oracle_obj,rel_err,match,nodes,lp_solves,time_sec
+pk1,86,45,55,0,31,915,node_limit,93.0000000285,11,6.83333333571,False,8,9,0.1582709

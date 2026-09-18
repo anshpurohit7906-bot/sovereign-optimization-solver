@@ -271,11 +271,17 @@ def _devex_select(reduced, nonbasic, weights):
 # ---------------------------------------------------------------------------
 def sparse_phase1(A, b, max_iter=PHASE1_MAX_ITER, verbose=2000,
                   tol=TOL, piv_tol=PIV_TOL,
-                  bland_after_stall=PHASE1_BLAND_AFTER_STALL):
+                  bland_after_stall=PHASE1_BLAND_AFTER_STALL,
+                  time_limit=None):
     """Compute a feasible basis for ``A x = b, x >= 0``.
 
     Returns ``(basis, iter, status, info)`` where ``basis`` indexes ORIGINAL
     columns (never artificials).
+
+    ``time_limit`` (optional, seconds) bounds the wall-clock budget.  When the
+    budget is exhausted the Phase I loop stops early and reports
+    ``status == "time_limit"``.  ``None`` (the default) keeps the original
+    iteration-only behaviour.
 
     Crash strategy: all-artificial ``B = I`` after row normalization so
     ``b >= 0``.  This is guaranteed feasible and nonsingular.  No external
@@ -319,8 +325,17 @@ def sparse_phase1(A, b, max_iter=PHASE1_MAX_ITER, verbose=2000,
     t_lu = t_solve = t_d = t_alpha = 0.0
     stall = 0
     last_art_sum = None
+    # Bound before the loop so a zero pivot budget reports honestly instead of
+    # raising UnboundLocalError on the final iteration-limit return.
+    art_sum = None
+    _t_budget = time.perf_counter()
 
     for it in range(max_iter):
+        if time_limit is not None and (time.perf_counter() - _t_budget) >= time_limit:
+            return basis, it, "time_limit", {
+                "err": "time limit", "nart": nart, "art_sum": last_art_sum,
+                "t_lu": t_lu, "t_solve": t_solve, "t_d": t_d, "t_alpha": t_alpha,
+            }
         t0 = time.perf_counter()
         try:
             B = A_aug[:, basis].tocsc()
@@ -503,13 +518,18 @@ def sparse_phase1(A, b, max_iter=PHASE1_MAX_ITER, verbose=2000,
 # Phase II (revised simplex, Devex pricing, condition-aware repair)
 # ---------------------------------------------------------------------------
 def sparse_phase2(A, b, c, basis, *, max_iter=MAX_ITER,
-                  pricing="devex", verbose=0):
+                  pricing="devex", verbose=0, time_limit=None):
     """Run sparse revised simplex Phase II from a feasible basis.
 
     Returns a result dict with keys: status, objective, iterations,
     x_basic, basis, nonbasic, y, reduced, rel_primal, rel_dual,
     rel_gap, primal_residual, repairs, soft_clamps, total_repair_pivots,
     solve_time.
+
+    ``time_limit`` (optional, seconds) bounds the wall-clock budget; when it
+    is exhausted the loop stops early and reports ``status == "time_limit"``.
+    A shared budget is also passed into any internal full-repair Phase I.
+    ``None`` (the default) keeps the original iteration-only behaviour.
     """
     if not sp.issparse(A):
         A = sp.csc_matrix(A)
@@ -538,7 +558,30 @@ def sparse_phase2(A, b, c, basis, *, max_iter=MAX_ITER,
     total_repair_pivots = 0; prev_obj = objective
     degenerate_run = 0; iters_since_eff_tol = 0
     seen_bases = {}; devex_count = 0; devex_degen = 0
+    # Sentinel for the time-limit exit below (a fresh Phase-II loop has not
+    # yet computed a dual); ``_phase2_ok`` substitutes zeros for None.
+    y = None
+    reduced = None
+    _t_budget = time.perf_counter()
     for iteration in range(max_iter):
+        if time_limit is not None and (time.perf_counter() - _t_budget) >= time_limit:
+            log(f"time limit {time_limit:.3g}s reached at it={iteration}")
+            # Report the dual/reduced costs actually implied by the current
+            # basis (never fabricate them); fall back to None only if the
+            # factorisation cannot supply them.
+            if y is None:
+                try:
+                    y = lu.solve(np.asarray(c[basis], float), trans="T")
+                    reduced = _clean_zero(
+                        c[nonbasic] - A[:, nonbasic].T @ y, TOL)
+                except Exception:
+                    y = None
+                    reduced = None
+            return _phase2_ok(
+                A, b, c, basis, x_basic, y, reduced, iteration,
+                repairs, soft_clamps, total_repair_pivots, t0,
+                status="time_limit",
+                message=f"time limit {time_limit:.3g}s reached at iteration {iteration}")
         iters_since_eff_tol += 1
 
         # ---- FEASIBILITY CHECK (condition-number-aware) ----
@@ -561,7 +604,9 @@ def sparse_phase2(A, b, c, basis, *, max_iter=MAX_ITER,
                 # full repair: genuine infeasibility -> Phase-I restart
                 obj_before = objective
                 basis_p, r_its, r_status, _ = sparse_phase1(
-                    A, b, max_iter=PHASE1_MAX_ITER, verbose=1 << 30)
+                    A, b, max_iter=PHASE1_MAX_ITER, verbose=1 << 30,
+                    time_limit=(None if time_limit is None else max(
+                        0.0, time_limit - (time.perf_counter() - _t_budget))))
                 Bpost = A[:, basis_p].tocsc()
                 lu = _try_factorize(Bpost)
                 if lu is None:
@@ -742,10 +787,23 @@ def _phase2_ok(A, b, c, basis, x_basic, y, reduced, iterations,
     norm_b = _inf_norm(b)
     norm_c = _inf_norm(c)
     resid_p = _inf_norm(A @ x_full - b)
-    y = np.asarray(y, dtype=np.float64) if y is not None else np.zeros(m)
-    reduced = (np.asarray(reduced, dtype=np.float64) if reduced is not None
-               else np.zeros(0))
     nb = np.array([j for j in range(n) if j not in set(basis)], dtype=np.intp)
+    # An early-exit path (time / iteration limit before the first dual solve)
+    # may have no dual yet.  Substitute a correctly sized zero vector so the
+    # reported residuals stay well defined instead of raising; never leave the
+    # caller with a silently wrong length.
+    if y is None:
+        y = np.zeros(m, dtype=np.float64)
+    else:
+        y = np.asarray(y, dtype=np.float64)
+        if y.shape != (m,):
+            y = np.zeros(m, dtype=np.float64)
+    if reduced is None:
+        reduced = np.zeros(nb.shape[0], dtype=np.float64)
+    else:
+        reduced = np.asarray(reduced, dtype=np.float64)
+        if reduced.shape != (nb.shape[0],):
+            reduced = np.zeros(nb.shape[0], dtype=np.float64)
     z = np.zeros(n)
     z[nb] = reduced
     resid_d = _inf_norm(A.T @ y + z - c)
@@ -806,7 +864,8 @@ def _phase2_fail(status, message, A, b, c, basis, m, n, t0):
 # Crossover orchestrator (IPM fallback entry point)
 # ---------------------------------------------------------------------------
 def crossover_from_ipm(A, b, c, *, max_iter=MAX_ITER, pricing="devex",
-                       verbose=0):
+                       verbose=0, phase1_max_iter=PHASE1_MAX_ITER,
+                       time_limit=None):
     """Run the full sparse crossover on a standard-form LP.
 
     Parameters
@@ -820,6 +879,11 @@ def crossover_from_ipm(A, b, c, *, max_iter=MAX_ITER, pricing="devex",
     pricing : ``"devex"`` (default) or ``"dantzig"``.
     verbose : progress verbosity (0 = quiet, N > 0 = progress every N-iters
         block via the Phase-II logger; Phase I always logs periodic summaries).
+    phase1_max_iter : Phase-I pivot budget (defaults to the module constant).
+    time_limit : optional wall-clock budget (seconds) shared by Phase I and
+        Phase II; when exhausted the current phase stops early and reports
+        ``phase1_time_limit`` / ``time_limit`` respectively.  ``None`` keeps
+        the original iteration-only behaviour.
 
     Returns a dict with the Phase-II result (see ``sparse_phase2``) augmented
     with ``"phase1"``: ({basis, iterations, status, info}, elapsed) so callers
@@ -838,7 +902,7 @@ def crossover_from_ipm(A, b, c, *, max_iter=MAX_ITER, pricing="devex",
 
     t1 = time.perf_counter()
     basis, p1_iters, p1_status, p1_info = sparse_phase1(
-        A, b, max_iter=PHASE1_MAX_ITER)
+        A, b, max_iter=phase1_max_iter, time_limit=time_limit)
     t_phase1 = time.perf_counter() - t1
     if verbose:
         log(f"crossover: Phase I iters={p1_iters} status={p1_status} "
@@ -863,6 +927,8 @@ def crossover_from_ipm(A, b, c, *, max_iter=MAX_ITER, pricing="devex",
         }
 
     result = sparse_phase2(A, b, c, list(basis), max_iter=max_iter,
-                           pricing=pricing, verbose=verbose)
+                           pricing=pricing, verbose=verbose,
+                           time_limit=(None if time_limit is None else max(
+                               0.0, time_limit - t_phase1)))
     result["phase1"] = phase1
     return result
