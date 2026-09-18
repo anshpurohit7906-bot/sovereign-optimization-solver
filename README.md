@@ -10,7 +10,7 @@ The implementation is independently developed from mathematical foundations. Exi
 
 ---
 
-## Verified Result (PILOT87)
+## Verified Result (PILOT87 — Independent Validation)
 
 The independent **validation / experimental** pipeline drives the Mehrotra
 IPM terminal basis to a strictly verified optimum on the hard `pilot87.mps`
@@ -35,43 +35,11 @@ Mehrotra IPM, and the sparse crossover fallback is entered **only** when the
 IPM stalls or lands in the numerical tail *and* the crossover gate is
 triggered (see [Architecture](#architecture)).
 
-Standalone Mehrotra on PILOT87 stalls in the numerical tail; the strict
-verified optimum below is produced by the **independent validation workflow**
+Standalone Mehrotra on PILOT87 stalls in the numerical tail; the verified
+optimum below is produced by the **independent validation workflow**
 (see [Verified Result](#verified-result-pilot87)), not by the raw IPM iterate.
 PILOT87 is therefore **not** unresolved by the complete solver pipeline — it is
 verified optimal to objective `301.710347333`.
-
-| Quantity | Value |
-|---|---|
-| Strict reduced-cost polish | 30 pivots from the terminal Phase-II basis |
-| Independently recomputed original objective | `301.710347333` |
-| HiGHS reference | `301.710347333` |
-| Objective difference | ≈ `1.1e-10` (relative ≈ `3.7e-13`) |
-| Primal residual | ≈ `1.6e-11` |
-| Basis residual | ≈ `1.6e-11` |
-| Complementarity | ≈ `-3.7e-13` |
-| Raw reduced-cost minimum | ≈ `-1.4e-14` |
-| Classification | `VERIFIED OPTIMAL` |
-| Certificate | `artifacts/pilot87/p87_strict_certificate.txt` (strict polish) / `artifacts/pilot87/p87_certificate.txt` (certify) |
-
-Two independent certificates are produced. The **strict certificate**
-(`p87_strict_certificate.txt`, populated from `p87_strict_polish.py` stdout by
-the orchestrator) is the basis for the objective/reduced-cost numbers above:
-after pivoting away every raw negative reduced cost, the *independently
-recomputed* original objective is `301.710347333`, agreeing with the HiGHS
-reference to `1.1e-10` (relative `3.7e-13`). The **certify certificate**
-(`p87_certificate.txt`, written by `tools/certification/p87_certify.py`)
-reconstructs the unscaled standard-form and original-LP solution from the
-persisted artifacts, checks each KKT condition independently, and (as of the
-tightened check) also confirms agreement with the HiGHS reference to within
-`1e-4` — well above the observed `~4.6e-5` gap on the pre-polish terminal
-basis. Neither trusts any objective reported by the solver. See
-[`ARCHITECTURE.md`](ARCHITECTURE.md#verification-and-certification) for the
-workflow.
-
-> **Numerical honesty:** a numerical failure is preferable to a falsely reported
-> optimum. Claims are backed by reproducible certificates, never by a single
-> solver printout.
 
 ---
 
@@ -248,7 +216,7 @@ IPM iterate itself; no simplex work is performed. The `crossover` method label
 in `results/benchmark_netlib.md` therefore marks the specific instances where
 the fallback actually replaced the iterate.
 
-### Crossover: production fallback vs. independent certification
+### Production crossover fallback (RRQR-free) vs. independent validation
 
 Two distinct things share the word "crossover" in this repository.
 
@@ -385,6 +353,40 @@ LIVE SOLVE    : NOT RUN (explicit --cert-fallback fast path)
 It exists for demonstrations under time pressure, and must never be presented
 as a fresh solve. On any instance other than PILOT87 the flag is ignored with a
 notice and a normal live solve runs.
+
+### Strict certificate / certify certificate (stored fast-path artifacts)
+
+| Quantity | Value |
+|---|---|
+| Strict reduced-cost polish | 30 pivots from the terminal Phase-II basis |
+| Independently recomputed original objective | `301.710347333` |
+| HiGHS reference | `301.710347333` |
+| Objective difference | ≈ `1.1e-10` (relative ≈ `3.7e-13`) |
+| Primal residual | ≈ `1.6e-11` |
+| Basis residual | ≈ `1.6e-11` |
+| Complementarity | ≈ `-3.7e-13` |
+| Raw reduced-cost minimum | ≈ `-1.4e-14` |
+| Classification | `VERIFIED OPTIMAL` |
+| Certificate | `artifacts/pilot87/p87_strict_certificate.txt` (strict polish) / `artifacts/pilot87/p87_certificate.txt` (certify) |
+
+Two independent certificates are produced. The **strict certificate**
+(`p87_strict_certificate.txt`, populated from `p87_strict_polish.py` stdout by
+the orchestrator) is the basis for the objective/reduced-cost numbers above:
+after pivoting away every raw negative reduced cost, the *independently
+recomputed* original objective is `301.710347333`, agreeing with the HiGHS
+reference to `1.1e-10` (relative `3.7e-13`). The **certify certificate**
+(`p87_certificate.txt`, written by `tools/certification/p87_certify.py`)
+reconstructs the unscaled standard-form and original-LP solution from the
+persisted artifacts, checks each KKT condition independently, and (as of the
+tightened check) also confirms agreement with the HiGHS reference to within
+`1e-4` — well above the observed `~4.6e-5` gap on the pre-polish terminal
+basis. Neither trusts any objective reported by the solver. See
+[`ARCHITECTURE.md`](ARCHITECTURE.md#verification-and-certification) for the
+workflow.
+
+> **Numerical honesty:** a numerical failure is preferable to a falsely reported
+> optimum. Claims are backed by reproducible certificates, never by a single
+> solver printout.
 
 ### Exit codes
 
@@ -577,8 +579,8 @@ the original unscaled data (primal residual `A x = b`, reduced-cost/dual
 residual `c_N − Nᵀy ≥ 0`, and primal/dual gap) (artifacts under
 `artifacts/pilot87/`) — which yields an original objective of `301.710347333`
 that agrees with the HiGHS reference to within `1.1e-10` (relative ≈
-`3.7e-13`) per the strict KKT check recorded in the certificate
-(see [Verified Result](#verified-result-pilot87)).
+`3.7e-13`). See [Verified Result](#verified-result-pilot87) for the independent
+validation workflow that produces this verified result.
 
 The **production solver's crossover fallback** is a separate path: when the
 Mehrotra IPM stalls or hits the numerical tail and the crossover gate passes,
