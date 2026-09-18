@@ -72,18 +72,22 @@ def _parse_args(argv=None):
                        help="allow the automatic sparse-crossover fallback if the IPM stalls")
     solve.add_argument("--cert-fallback", action="store_true",
                        help="explicit opt-in: report pilot87 from the stored strict KKT "
-                            "certificate instead of a live solve (fast path for demos "
-                            "under time pressure; never used implicitly)")
+                           "certificate instead of a live solve (fast path for demos "
+                           "under time pressure; never used implicitly)")
     solve.add_argument("--no-cert-fallback", action="store_true",
                        help="deprecated no-op kept for command compatibility: the live "
-                            "solve is already the default and the certificate is never "
-                            "used implicitly")
+                           "solve is already the default and the certificate is never "
+                           "used implicitly")
     solve.add_argument("--time-limit", type=float, default=None, metavar="SECONDS",
                        help="optional wall-clock limit for the live solve; on expiry "
-                            "report TIME LIMIT / LIVE SOLVE INCOMPLETE (exit nonzero) "
+                            "report TIME LIMIT / LIVE SOLVE INCOMPLETE with a nonzero exit "
                             "and NEVER fall back to the certificate")
     solve.add_argument("--verbose", "-v", action="store_true",
                        help="print iteration logs (and tracebacks on failure)")
+    qp = sub.add_parser("solve-qp", help="solve a convex QP from a Maros-Mészáros SIF file")
+    qp.add_argument("sif_file", help="path to the .SIF file (e.g. data/qp/real_benchmarks/maros_mesaras/QGROW15.SIF)")
+    qp.add_argument("--verbose", "-v", action="store_true",
+                    help="print iteration logs from the QP solver")
     return parser.parse_args(argv)
 
 
@@ -223,6 +227,70 @@ def cmd_solve(args) -> int:
     return 0 if ok else 1
 
 
+def cmd_solve_qp(args) -> int:
+    _ensure_path()
+    try:
+        from src.qp.qps import read_qps
+        from src.qp.solver import solve_qp
+        from src.qp.verify import certificate
+    except Exception as exc:
+        return _fail(f"cannot initialise the QP engine ({exc})",
+                     verbose=args.verbose, exc=exc)
+
+    path = args.sif_file
+    if not os.path.isfile(path):
+        return _fail(f"SIF file not found: {path}", verbose=args.verbose)
+
+    try:
+        problem = read_qps(path)
+    except Exception as exc:
+        return _fail(f"cannot read QP file {path!r}: {exc}",
+                     verbose=args.verbose, exc=exc)
+
+    try:
+        t0 = time.perf_counter()
+        result = solve_qp(problem, verbose=args.verbose)
+        solve_sec = time.perf_counter() - t0
+    except Exception as exc:
+        return _fail(f"QP solver failure on {path!r}: {exc}",
+                     verbose=args.verbose, exc=exc)
+
+    if result.status != "optimal":
+        return _fail(f"QP solver did not converge (status={result.status})",
+                     verbose=args.verbose)
+
+    try:
+        cert = certificate(problem, result.x, result.y, result.z, result.s, tol=1e-6)
+    except Exception as exc:
+        return _fail(f"certificate verification failed on {path!r}: {exc}",
+                     verbose=args.verbose, exc=exc)
+
+    if not cert["ok"]:
+        return _fail(f"KKT certificate FAILED on {path!r}: "
+                     f"max_violation={max(cert['stationarity'], cert['equality_residual'],
+                     cert['inequality_violation'], cert['dual_violation'], cert['complementarity']):.3e}",
+                     verbose=args.verbose)
+
+    # ---- report -------------------------------------------------------
+    print("OPTICORE - QP solver (indigenous)")
+    print(f"  input file   : {path}")
+    print(f"  problem      : {problem.name} ({problem.n} variables, "
+          f"{problem.m_ineq} inequality rows, {problem.m_eq} equality rows)")
+    print(f"  STATUS       : COMPLETED")
+    print(f"  objective    : {result.objective:.9f}")
+    print(f"  iterations   : {result.iterations}")
+    print(f"  runtime      : {solve_sec:.4f} s")
+    print(f"  KKT certificate: ok={cert['ok']}")
+    print(f"  stationarity : {cert['stationarity']:.3e}")
+    print(f"  scaled_statio: {cert['scaled_stationarity']:.3e}")
+    print(f"  equality_res : {cert['equality_residual']:.3e}")
+    print(f"  inequality_v : {cert['inequality_violation']:.3e}")
+    print(f"  dual_violatio: {cert['dual_violation']:.3e}")
+    print(f"  complementari: {cert['complementarity']:.3e}")
+    print(f"  objective_cert: {cert['objective']:.9f}")
+    return 0
+
+
 def _run_live_solve(solve_lp, lp, *, crossover: bool, verbose: bool,
                     time_limit=None) -> dict:
     """Run the genuine live solve, optionally bounded by a wall-clock limit.
@@ -343,11 +411,11 @@ def main(argv=None) -> int:
     if args.command == "solve":
         code = cmd_solve(args)
         if _HARD_EXIT:
-            # A daemon solver worker is still running (time-limit expiry);
-            # skip interpreter shutdown so it cannot corrupt stdout/exit code.
             sys.stdout.flush()
             os._exit(code)
         return code
+    if args.command == "solve-qp":
+        return cmd_solve_qp(args)
     return _fail(f"unknown command: {args.command}", verbose=False)
 
 
