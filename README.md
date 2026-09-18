@@ -12,31 +12,34 @@ The implementation is independently developed from mathematical foundations. Exi
 
 ## Verified Result (PILOT87)
 
-The independent **certification / experimental** pipeline drives the Mehrotra
+The independent **validation / experimental** pipeline drives the Mehrotra
 IPM terminal basis to a strictly verified optimum on the hard `pilot87.mps`
 benchmark:
 
 ```text
 Mehrotra IPM terminal basis
-  → RRQR basis identification        (experiment/crossover/)
-  → sparse Phase I
-  → sparse Phase II
-  → strict reduced-cost polish       (tools/certification/)
-  → independent KKT certificate
+  → row/column equilibration
+  → RRQR basis identification
+  → sparse composite Phase-I repair
+  → Phase-II simplex
+       (driver-side repair/resume + cond cleanup)
+  → independent verification on original data
+       (primal residual + reduced-cost/dual residual + gap)
   → VERIFIED OPTIMAL
 ```
 
-That RRQR → Phase I → Phase II → strict-polish → certificate workflow is the
-**independent certification path** used to verify PILOT87 (and PILOT4). It is
+That RRQR → Phase I → Phase II → verification workflow is the
+**independent validation path** used to verify PILOT87 (and PILOT4). It is
 *not* executed for every production solve: the production LP path is the
 Mehrotra IPM, and the sparse crossover fallback is entered **only** when the
 IPM stalls or lands in the numerical tail *and* the crossover gate is
 triggered (see [Architecture](#architecture)).
 
-Standalone Mehrotra on PILOT87 stalls in the numerical tail; it is the
-**crossover pipeline, not the raw IPM iterate, that yields the certified
-optimum below**. PILOT87 is therefore **not** unresolved by the complete solver
-pipeline — it is verified optimal by the full path.
+Standalone Mehrotra on PILOT87 stalls in the numerical tail; the strict
+verified optimum below is produced by the **independent validation workflow**
+(see [Verified Result](#verified-result-pilot87)), not by the raw IPM iterate.
+PILOT87 is therefore **not** unresolved by the complete solver pipeline — it is
+verified optimal to objective `301.710347333`.
 
 | Quantity | Value |
 |---|---|
@@ -270,10 +273,14 @@ crossover_from_ipm(...)  orchestrator → candidate iterate
 independent acceptance checks (rel_p, rel_d, rel_gap <= tol)
 ```
 
-**2. Independent certification / experimental pipeline** (RRQR → sparse Phase I
-→ sparse Phase II → strict reduced-cost polish → independent KKT certificate).
+**2. Independent validation / experimental pipeline** (equilibration → RRQR basis
+identification → sparse composite Phase-I repair → Phase-II simplex with
+driver-side repair/resume and vertex-preserving degenerate-pivot cond cleanup
+→ independent verification on the original unscaled data: primal residual
+`A x = b`, reduced-cost/dual residual `c_N − Nᵀy ≥ 0`, and primal/dual gap).
 This is the path behind the [verified PILOT87 result](#verified-result-pilot87);
-it lives in `experiment/crossover/` and `tools/certification/` and writes the
+it lives in `experiment/crossover/` (`run_pilot87_crossover.py`) and
+`tools/certification/` (`p87_strict_polish.py`, `p87_certify.py`) and writes the
 artifacts under `artifacts/`. It is **not** part of the per-solve production
 path and is not executed for every LP.
 
@@ -558,17 +565,34 @@ develops an extreme dynamic range.
 The existing sparse backend removes unnecessary dense work, but it does not, on
 its own, solve the underlying conditioning problem for the raw IPM iterate.
 
-**Completing the pipeline resolves PILOT87.** Running the full solver path —
-sparse crossover (RRQR basis identification → sparse Phase I → sparse Phase II
-→ strict reduced-cost polish) followed by an independent KKT certificate —
-produces a **strictly verified optimal** solution for PILOT87, with an original
-objective of `301.710347333` that agrees with the HiGHS reference to within
-`1.1e-10` (relative ≈ `3.7e-13`) per the strict certificate (see the
-[Verified Result](#verified-result-pilot87)).
+**Completing the pipeline resolves PILOT87.** The **standalone Mehrotra IPM
+path stalls** on PILOT87 (its extreme dynamic range drives a numerical tail),
+so PILOT87 is **not** solved end-to-end by the production per-solve path.
+Instead, the strictly verified optimal result for PILOT87 is produced by the
+**independent validation workflow** in `experiment/crossover/run_pilot87_crossover.py`
+— row/column equilibration → RRQR basis identification → sparse composite
+Phase-I repair → Phase-II simplex (driver-side repair/resume and
+vertex-preserving degenerate-pivot cond cleanup) → independent verification of
+the original unscaled data (primal residual `A x = b`, reduced-cost/dual
+residual `c_N − Nᵀy ≥ 0`, and primal/dual gap) (artifacts under
+`artifacts/pilot87/`) — which yields an original objective of `301.710347333`
+that agrees with the HiGHS reference to within `1.1e-10` (relative ≈
+`3.7e-13`) per the strict KKT check recorded in the certificate
+(see [Verified Result](#verified-result-pilot87)).
+
+The **production solver's crossover fallback** is a separate path: when the
+Mehrotra IPM stalls or hits the numerical tail and the crossover gate passes,
+it runs sparse Phase I crash + sparse Devex Phase II followed by the
+independent acceptance checks. That production fallback does **not** use RRQR
+basis identification — it starts from the all-artificial `B = I` two-phase crash
+and does not run strict reduced-cost polish; those RRQR → Phase-I repair →
+Phase-II simplex validation steps are reserved for the independent validation
+path above.
 
 So the limitation applies to the **standalone Mehrotra IPM path**, not to the
 complete solver pipeline. PILOT87 remains an active scalability target for the
-standalone path; it is verified optimal through the full crossover pipeline.
+standalone path; it is verified optimal through the independent
+validation workflow.
 
 ---
 
@@ -834,12 +858,30 @@ sc205          optimal     -52.202061205     -52.202061212      1.27e-10        
 share2b        optimal     -415.732240603    -415.732240741     3.31e-10        2.16e-10
 ```
 
-PILOT87's objective is folded from the independent strict KKT certificate
-(`artifacts/pilot87/p87_strict_certificate.txt`, |delta| = 1e-10 vs HiGHS), not
-from a direct interior-point solve.  PILOT4's objective is folded from its
-crossover certificate (`artifacts/pilot4/p4_crossover_certificate.txt`, 3/3
-bit-identical RRQR → repair → Phase II runs, |delta| = 4.5e-11 vs HiGHS).
-The direct IPM stalls on this instance; the crossover pipeline proves optimality.
+ PILOT87's strict verified result (objective `301.710347333`,
+|delta| = 1.034e-10 vs HiGHS) comes from the **independent validation
+workflow**, not from a direct interior-point solve: it is produced by
+`experiment/crossover/run_pilot87_crossover.py` — row/column equilibration → RRQR
+basis identification → sparse composite Phase-I repair → Phase-II simplex
+(driver-side repair/resume and vertex-preserving degenerate-pivot cond cleanup)
+→ independent verification of the original unscaled data (primal residual `A x = b`,
+reduced-cost/dual residual `c_N − Nᵀy ≥ 0`, and primal/dual gap) — whose
+artifacts live under `artifacts/pilot87/` (e.g. `p87_strict_certificate.txt`).
+PILOT4's objective is folded from its own independent validation artifact
+(`artifacts/pilot4/p4_crossover_certificate.txt`, 3/3 bit-identical
+RRQR → repair → Phase II runs, |delta| = 4.5e-11 vs HiGHS).  In short: the
+published PILOT87 number is the output of the validation workflow, and the
+direct IPM stalls on this instance.
+
+This is distinct from the **production solver's crossover fallback**.  When the
+Mehrotra IPM stalls or lands in the numerical tail and the crossover gate
+passes, the production path performs sparse Phase I crash followed by sparse
+Devex Phase II, then runs the independent acceptance checks — it does **not**
+require RRQR basis identification or strict reduced-cost polish.  The RRQR →
+Phase-I repair → Phase-II simplex validation workflow is reserved for the
+independent validation path and is not part of the per-solve production
+crossover fallback.
+
 All 7/7 instances verified.  The canonical benchmark numbers for presentations
 should always come from the final frozen repository state.
 
@@ -927,7 +969,7 @@ sovereign-optimization-solver/
 │   └── verify_with_highs.py
 │
 ├── experiment/                   # isolated research (not production deps)
-│   ├── crossover/                # RRQR → sparse Phase I/II → polish pipeline
+│   ├── crossover/                # RRQR → Phase-I repair → Phase-II validation (PILOT87/PILOT4)
 │   ├── pdhg/
 │   ├── mcc/
 │   ├── regularization/
@@ -940,7 +982,7 @@ sovereign-optimization-solver/
 │   ├── benchmark_maros.py        # Maros–Mészáros QP benchmark (SIF fetched, never committed)
 │   ├── benchmark_miplib.py       # MIPLIB MILP benchmark harness
 │   ├── validate_milp_incumbent.py # direct B&B validation + independent incumbent check
-│   └── certification/            # independent KKT certificate + strict polish
+│   └── certification/            # independent KKT check + strict polish helpers
 │       ├── p87_certify.py
 │       ├── p87_strict_polish.py
 │       └── README.md
@@ -997,7 +1039,7 @@ Current limitations include:
 * PDHG/PDLP experiments remain research implementations
 * PILOT87 exposes unresolved Schur-complement conditioning limitations in the
   **standalone Mehrotra IPM path** (which stalls in the numerical tail); the
-  complete crossover pipeline resolves PILOT87 to a strictly verified optimum
+  independent validation workflow resolves PILOT87 to a strictly verified optimum
 
 These limitations are deliberate and documented rather than hidden.
 
@@ -1026,7 +1068,7 @@ The development strategy is staged.
 * investigate augmented-KKT formulations
 * improve sparse ordering and factorization
 * improve numerical-tail robustness of the **standalone Mehrotra IPM** (PILOT87
-  conditioning in the raw IPM path; the complete crossover pipeline already
+  conditioning in the raw IPM path; the independent validation workflow already
   resolves PILOT87 to a strictly verified optimum)
 * benchmark memory and runtime scaling
 
