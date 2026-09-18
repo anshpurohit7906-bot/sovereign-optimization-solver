@@ -12,18 +12,26 @@ The implementation is independently developed from mathematical foundations. Exi
 
 ## Verified Result (PILOT87)
 
-The complete solver pipeline drives the Mehrotra IPM terminal basis to a
-strictly verified optimum on the hard `pilot87.mps` benchmark:
+The independent **certification / experimental** pipeline drives the Mehrotra
+IPM terminal basis to a strictly verified optimum on the hard `pilot87.mps`
+benchmark:
 
 ```text
-Mehrotra IPM
-  → RRQR basis identification
+Mehrotra IPM terminal basis
+  → RRQR basis identification        (experiment/crossover/)
   → sparse Phase I
   → sparse Phase II
-  → strict reduced-cost polish
+  → strict reduced-cost polish       (tools/certification/)
   → independent KKT certificate
   → VERIFIED OPTIMAL
 ```
+
+That RRQR → Phase I → Phase II → strict-polish → certificate workflow is the
+**independent certification path** used to verify PILOT87 (and PILOT4). It is
+*not* executed for every production solve: the production LP path is the
+Mehrotra IPM, and the sparse crossover fallback is entered **only** when the
+IPM stalls or lands in the numerical tail *and* the crossover gate is
+triggered (see [Architecture](#architecture)).
 
 Standalone Mehrotra on PILOT87 stalls in the numerical tail; it is the
 **crossover pipeline, not the raw IPM iterate, that yields the certified
@@ -76,6 +84,11 @@ tests/                production regression + edge-case test suite (incl.
                       test_qp_sparse.py, test_qps_reader.py, test_milp_*,
                       test_gpu_backend.py)
 data/                 MPS benchmark inputs (afiro.mps, pilot87.mps, ...)
+data/refinery_sas/   provenance + formulation notes for the public SAS/OR mpex06 refinery LP
+demo/                demo segments (demo_sih.py, refinery_public.py, etc.)
+demo/refinery_public.py public SAS/OR refinery LP demo (continuous LP, NOT MILP)
+opticore.py         public CLI: `opticore solve <mps> [--crossover] [--cert-fallback] [--time-limit SECS] [-v]`
+pyproject.toml      packaging metadata + console-script entry point (`opticore = "opticore:main"`)
 tools/                benchmark harness + certification scripts
   tools/benchmark_netlib.py        Netlib LP benchmark vs HiGHS reference
   tools/benchmark_maros.py         Maros–Mészáros QP benchmark (SIF fetched, never committed)
@@ -151,9 +164,12 @@ The project has also explored Revised Simplex and several PDHG/PDLP-style approa
 - Scale-aware numerical-tail detection
 - Best-trusted-iterate preservation
 - Escalating diagonal regularization
-- Validated sparse crossover pipeline (RRQR basis identification → sparse
-  Phase I → sparse Phase II → strict reduced-cost polish → independent KKT
-  certificate; the path behind the verified PILOT87 result)
+- Validated sparse crossover **fallback** (`src/lp/crossover.py`: the sparse
+  Phase I crash + sparse Devex Phase II refined-simplex fallback used by
+  `solve_lp` when the Mehrotra IPM stalls or lands in the numerical tail and the
+  crossover gate passes; no RRQR or external basis needed; the
+  `crossover` method label marks the specific Netlib instances where the fallback
+  actually replaced the IPM iterate)
 - Canonical sparse convex QP package (`src/qp/`: inequality-form Mehrotra IPM,
   sparse SPLU saddle-point backend, independent KKT certificate, QPS/SIF reader;
   legacy dense standard-form slice `src/lp/qp.py` retained for compatibility)
@@ -181,7 +197,9 @@ The project has also explored Revised Simplex and several PDHG/PDLP-style approa
 
 ### Primary LP solver
 
-Mehrotra is the **primary LP solver**:
+Mehrotra is the **primary LP solver**. Crossover is **not** always run — it is
+a conditional fallback that only triggers on a stalled / numerical-tail IPM
+iterate that also passes the crossover gate:
 
 ```text
 MPS
@@ -196,43 +214,68 @@ Scaling / Equilibration
 Mehrotra Predictor-Corrector IPM
  │
  ├── Dense Cholesky backend
+ ├── Sparse CSR + SuperLU Schur backend (production default)
+ └── Dense-Schur CUDA/CuPy backend (opt-in, backend="gpu"/"auto")
  │
- └── Sparse CSR + SuperLU Schur backend (production default)
-  │
-  └── Dense-Schur CUDA/CuPy backend (opt-in, backend="gpu"/"auto")
+ ▼
+IPM status
+ │
+ ├── converged ──────────────────────► accept the IPM iterate (crossover NOT run)
+ │
+ └── stalled / numerical_tail
+     AND crossover_fallback=True
+     AND best_merit <= CROSSOVER_MERIT_RATIO * tol        (the crossover gate)
+     │
+     ▼
+     sparse crossover fallback
+     (sparse Phase I crash → sparse Devex Phase II, no RRQR needed)
+     │
+     ▼
+     independent acceptance checks (rel_p, rel_d, rel_gap all <= tol)
+     │
+     ├── accepted → iterate replaced, status = "optimal"
+     └── rejected / failed → keep the IPM best-trusted iterate, report honestly
  │
  ▼
 MehrotraResult
 ```
 
-### Validated crossover (PILOT87 certification)
+In the common case the IPM converges and the returned `MehrotraResult` is the
+IPM iterate itself; no simplex work is performed. The `crossover` method label
+in `results/benchmark_netlib.md` therefore marks the specific instances where
+the fallback actually replaced the iterate.
 
-The crossover is not merely an unrelated experimental path — it is the
-validated path that produced the **verified PILOT87 result** (VERIFIED OPTIMAL,
-see the [Verified Result](#verified-result-pilot87)). It continues from the
-Mehrotra terminal basis:
+### Crossover: production fallback vs. independent certification
+
+Two distinct things share the word "crossover" in this repository.
+
+**1. Production fallback** (`src/lp/crossover.py`, used by `solve_lp` when the
+gate above passes). Promoted from the validated PILOT4/PILOT87 experimental
+pipeline with no algorithmic change, and deliberately **free of RRQR, dense
+factorization or any external starting basis**:
 
 ```text
-Mehrotra terminal basis
- │
- ▼
-RRQR basis identification
- │
- ▼
-Sparse Phase I
- │
- ▼
-Sparse Phase II
- │
- ▼
-Strict reduced-cost polish
- │
- ▼
-Independent KKT certificate
- │
- ▼
-VERIFIED OPTIMAL
+sparse_phase1(A, b)      textbook two-phase crash (B = I, no RRQR)
+  │
+  ▼
+sparse_phase2(A, b, c, basis)
+                         revised simplex, sparse LU refactorization,
+                         iterative refinement, Devex pricing, Bland
+                         tie-breaking, condition-aware repair
+  │
+  ▼
+crossover_from_ipm(...)  orchestrator → candidate iterate
+  │
+  ▼
+independent acceptance checks (rel_p, rel_d, rel_gap <= tol)
 ```
+
+**2. Independent certification / experimental pipeline** (RRQR → sparse Phase I
+→ sparse Phase II → strict reduced-cost polish → independent KKT certificate).
+This is the path behind the [verified PILOT87 result](#verified-result-pilot87);
+it lives in `experiment/crossover/` and `tools/certification/` and writes the
+artifacts under `artifacts/`. It is **not** part of the per-solve production
+path and is not executed for every LP.
 
 Revised Simplex currently consumes the standard-form representation through a separate implementation:
 
@@ -253,6 +296,150 @@ experiment/pdhg/
 ```
 
 They are not currently part of the primary production LP path.
+
+---
+
+## Quick Start / CLI
+
+The public command is **`opticore`** (module `opticore.py` at the repository
+root; console entry point declared in `pyproject.toml`).
+
+```bash
+python -m pip install -e .
+```
+
+### Solve an MPS file
+
+```bash
+opticore solve data/afiro.mps
+opticore solve data/afiro.mps --crossover
+opticore solve data/pilot4_plain.mps --crossover
+```
+
+Every `opticore solve` is a **genuine live solve** by default. `--crossover`
+enables the conditional sparse-crossover fallback described in
+[Architecture](#architecture); if the IPM converges directly, no crossover is
+run and the CLI says so. `-v` / `--verbose` streams the real per-iteration IPM
+log and the crossover decision lines from the solver core.
+
+Sample output:
+
+```text
+OPTICORE - indigenous LP solver
+  input file   : data/afiro.mps
+  problem      : AFIRO (objective row: COST)
+  variables    : 32
+  constraints  : 27
+  nonzeros     : 83
+  method       : Mehrotra IPM (CPU backend)
+  crossover    : disabled
+  RESULT SOURCE : LIVE OPTICORE SOLVE
+  LIVE SOLVE    : COMPLETED
+  status       : optimal
+  objective    : -464.753142659
+  iterations   : 9
+  ...
+```
+
+### PILOT87: live solve with a wall-clock limit
+
+```bash
+opticore solve data/pilot87.mps --crossover --time-limit 120
+```
+
+This is a **genuine live solve** with a wall-clock limit; the certificate is
+never consulted. PILOT87 is a hard instance — the standalone IPM stalls in the
+numerical tail (see [PILOT87](#pilot87)) — so the live solve typically reaches
+the limit and then reports honestly:
+
+```text
+RESULT SOURCE : LIVE OPTICORE SOLVE
+LIVE SOLVE    : INCOMPLETE (TIME LIMIT of 120s reached ...)
+status        : TIME LIMIT
+```
+
+The CLI never silently switches to the certificate after a timeout. PILOT87 is **NOT** a fast live benchmark; the limit exists precisely so a demo can bound
+the wait.
+
+### PILOT87: explicit certified fast path
+
+```bash
+opticore solve data/pilot87.mps --crossover --cert-fallback
+```
+
+This is an **explicit opt-in fast path** that reports the stored strict KKT
+certificate. It does **not** run the live solve:
+
+```text
+RESULT SOURCE : STORED STRICT KKT CERTIFICATE
+LIVE SOLVE    : NOT RUN (explicit --cert-fallback fast path)
+```
+
+It exists for demonstrations under time pressure, and must never be presented
+as a fresh solve. On any instance other than PILOT87 the flag is ignored with a
+notice and a normal live solve runs.
+
+### Exit codes
+
+`0` only when the solve reports `optimal`. A missing file, an invalid MPS, a
+solver failure, or a `--time-limit` expiry all exit non-zero with a clear
+message and no traceback unless `-v` is given. There is no silent fallback to
+any other solver.
+
+---
+
+## SIH 26119 Demo
+
+```bash
+python demo/demo_sih.py --refinery-public
+```
+
+This segment reproduces the **public SAS/OR `mpex06` refinery-planning LP** as a
+continuous LP (never an artificial MILP) and exposes the complete live workflow
+stage by stage:
+
+```text
+public SAS/OR refinery data
+  → NumericalLP construction + structural gate
+  → live Mehrotra IPM (real per-iteration log)
+  → post-solve / crossover status
+  → independent feasibility / objective verification
+  → crude-2 availability what-if
+  → second live re-solve
+  → second verification
+```
+
+| Item | Value |
+|---|---|
+| Data source | SAS/OR sample library `mpex06` (transcribed verbatim; provenance in `data/refinery_sas/`) |
+| Data policy | **public SAS/OR benchmark data — NOT MRPL operational data** |
+| Variables / constraints / nonzeros | `51` / `45` (E=37, L=4, G=4) / `154` |
+| Published baseline objective | ≈ `211365.13477` |
+| OPTICORE baseline objective | ≈ `211365.13471` |
+| Relative difference | ≈ `2.85e-10` (gate: `rel < 1e-6`; the `6e-05` absolute gap is informational only) |
+| What-if change | crude-2 availability `30000 → 24000` (a new scenario, **not** compared to the published optimum) |
+| What-if objective | ≈ `205304.48801` |
+
+Notes on the honesty of that output:
+
+* both solves print the **actual** IPM iteration log emitted by
+  `solve_lp(verbose=True)` (7 iterations each for the base and what-if LPs on
+  this instance) — nothing is simulated and there are no added delays;
+* `constraints : 45 (E=37, L=4, G=4)` differs from the SAS-published `46/158`
+  because exactly **one redundant** fuel-oil equality is omitted — the four
+  SAS-written fuel-oil rows sum to zero identically, so keeping the fourth trips
+  the standard-form rank guard. Every retained coefficient is verbatim SAS data;
+  the reasoning is recorded in `data/refinery_sas/README.md`;
+* the post-solve stage reports the real crossover state — this refinery LP does
+  not request crossover and the IPM converges directly, so it prints
+  `Crossover requested : NO` / `IPM solution used : YES` rather than claiming a
+  crossover ran;
+* verification is **independent feasibility/objective verification**
+  (row-type-aware primal residuals plus an independently recomputed `c @ x`), **NOT** a KKT optimality proof;
+* no certificate is used anywhere in this demo.
+
+Other demo modes: `python demo/demo_sih.py` (default MILP + QP segments),
+`--milp-only`, `--qp-only`.
 
 ---
 
