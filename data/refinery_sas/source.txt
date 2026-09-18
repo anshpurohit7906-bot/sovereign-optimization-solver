@@ -1,0 +1,16 @@
+Official source for the public refinery-planning LP benchmark:
+
+  https://support.sas.com/documentation/onlinedoc/or/ex_code/143/mpex06.html
+
+Mirror / worked reference (same data, SAS OPTMODEL transcription with solution):
+
+  https://sassoftware.github.io/sasoptpy/examples/refinery_optimization.html
+
+Program : SAS/OR Sample Library mpex06 — "Refinery Optimization (mpex06)"
+Book    : Example 06 from "Mathematical Programming Examples"
+Accessed: 2026-09-18 (transcribed by hand into demo/refinery_public.py)
+
+No data files are downloaded or vendored here; the numerical values from the
+page above are transcribed verbatim into demo/refinery_public.py (see
+load_public_refinery_data) and this directory only records provenance.
+See data/refinery_sas/README.md for the formulation summary.

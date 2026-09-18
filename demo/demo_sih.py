@@ -6,10 +6,16 @@ Runs two segments:
 
 Both solved by the from-scratch engine; HiGHS/SciPy used as oracle only.
 
+A third, opt-in segment reproduces the public SAS/OR mpex06 refinery LP
+(demo/refinery_public.py, continuous LP, no MILP reformulation):
+
+    python demo/demo_sih.py --refinery-public
+
 Usage:
     python demo/demo_sih.py              # run both segments
     python demo/demo_sih.py --milp-only  # MILP segment only
     python demo/demo_sih.py --qp-only    # QP segment only
+    python demo/demo_sih.py --refinery-public  # public refinery LP only
 """
 
 from __future__ import annotations
@@ -425,6 +431,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--milp-only", action="store_true")
     parser.add_argument("--qp-only", action="store_true")
+    parser.add_argument("--refinery-public", action="store_true",
+                        help="run the public SAS mpex06 refinery-LP segment only")
     args = parser.parse_args()
 
     print("SIH 26119 — Sovereign Optimization Solver Demo")
@@ -436,6 +444,16 @@ def main():
     except ImportError:
         print("SciPy: NOT INSTALLED")
     print()
+
+    if args.refinery_public:
+        from refinery_public import run_public_refinery_demo
+        ok = run_public_refinery_demo()
+        print("=" * 70)
+        print("SUMMARY")
+        print("=" * 70)
+        print(f"  {'REFINERY':8s}: {'PASS' if ok else 'FAIL'}")
+        print(f"\nOverall: {'ALL PASS' if ok else 'SOME FAILED'}")
+        return 0 if ok else 1
 
     results = {}
     if not args.qp_only:
