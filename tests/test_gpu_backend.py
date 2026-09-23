@@ -8,23 +8,16 @@ no fake GPU results are produced without hardware.
 
 from __future__ import annotations
 
-import os
-import sys
-
 import numpy as np
 import pytest
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-_ROOT = os.path.normpath(os.path.join(_HERE, ".."))
-_LP = os.path.join(_ROOT, "src", "lp")
-_SRC = os.path.join(_ROOT, "src")
-for _p in (_ROOT, _LP, _SRC):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
-
-from gpu_linear_system import GPUBackendError, gpu_available, gpu_info  # noqa: E402
-from linear_system import factor_reduced_system  # noqa: E402
-from mehrotra import MehrotraError, NumericalLP, solve_lp  # noqa: E402
+from opticore.lp.gpu_linear_system import (  # noqa: E402
+    GPUBackendError, gpu_available, gpu_info,
+)
+from opticore.lp.linear_system import factor_reduced_system  # noqa: E402
+from opticore.lp.mehrotra import (  # noqa: E402
+    MehrotraError, NumericalLP, solve_lp,
+)
 
 _HAS_GPU = gpu_available()
 

@@ -8,19 +8,16 @@ hand-verifiable integer problems.  No external solver is used.
 from __future__ import annotations
 
 import os
-import sys
 from dataclasses import replace
 
 import numpy as np
 
+
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.normpath(os.path.join(_HERE, ".."))
-for _p in (os.path.join(_ROOT, "src"), os.path.join(_ROOT, "src", "lp"), _ROOT):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
 
-from numerical_model import NumericalLP
-from lp.branch_bound import solve_milp, MilpError
+from opticore.numerical_model import NumericalLP
+from opticore.lp.branch_bound import solve_milp, MilpError
 
 
 def _mk_lp(name, A, b, c, row_types, lb, ub, maximize=False):
@@ -150,7 +147,7 @@ def test_rounding_heuristic_accepts_only_feasible_points():
     """Regression: the v2 rounding heuristic must never return an infeasible
     point as feasible (the greedy one-flip path once lost the improving flip
     and reported x=[1,1,1,0] for a knapsack whose only row has RHS 8)."""
-    from lp.branch_bound import _rounding_heuristic
+    from opticore.lp.branch_bound import _rounding_heuristic
 
     A = np.array([[3.0, 4.0, 2.0, 6.0]])
     b = np.array([8.0])
@@ -213,8 +210,8 @@ def test_integer_fixing_repair_reoptimizes_continuous_vars():
     the continuous LP must push the free variable x3 to 3 and return a
     feasible integer-compatible point with objective -10.
     """
-    from lp.branch_bound import _rounding_heuristic
-    from lp.mehrotra import solve_lp
+    from opticore.lp.branch_bound import _rounding_heuristic
+    from opticore.lp.mehrotra import solve_lp
 
     lp, mask = _mk_mixed_integer_with_continuous()
     rel = solve_lp(lp)
@@ -246,7 +243,7 @@ def test_integer_fixing_repair_reoptimizes_continuous_vars():
 def test_infeasible_fixed_integer_assignment_rejected():
     """A fixed-integer assignment whose continuous LP is infeasible is
     rejected (and never crashes the solver path)."""
-    from lp.branch_bound import _repair_via_continuous_lp
+    from opticore.lp.branch_bound import _repair_via_continuous_lp
 
     lp, mask = _mk_mixed_integer_with_continuous()
     bad = np.array([1.0, 1.0, 1.0, 0.0])
@@ -265,7 +262,7 @@ def test_infeasible_fixed_integer_assignment_rejected():
 def test_repaired_assignment_becomes_incumbent_in_solve_milp():
     """The repair heuristic's feasible point flows into solve_milp as an
     incumbent and the solve still proves the true optimum (-10)."""
-    from lp.branch_bound import solve_milp
+    from opticore.lp.branch_bound import solve_milp
 
     lp, mask = _mk_mixed_integer_with_continuous()
     res = solve_milp(lp, integer_mask=mask, node_limit=40, verbose=False)
@@ -304,7 +301,7 @@ def test_repair_solution_passes_independent_checks():
     bounds, integrality, row constraints, and objective are all consistent."""
     import math
 
-    from lp.branch_bound import _repair_via_continuous_lp
+    from opticore.lp.branch_bound import _repair_via_continuous_lp
 
     lp, mask = _mk_mixed_integer_with_continuous()
     cand = np.array([1.0, 0.0, 1.0, 0.0])
@@ -336,7 +333,7 @@ def test_repair_solution_passes_independent_checks():
 def test_strong_branch_handles_numerically_failed_child():
     """Strong branching must survive a node whose child relaxation fails
     numerically (e.g. crossover returns a dict without residual keys)."""
-    from lp.branch_bound import _strong_branch_select
+    from opticore.lp.branch_bound import _strong_branch_select
     from dataclasses import replace as _replace
 
     lp = _mk_lp(

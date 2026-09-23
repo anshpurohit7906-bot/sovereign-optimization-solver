@@ -12,13 +12,13 @@ import numpy as np
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(os.path.dirname(_HERE))
-for _path in (_ROOT, os.path.join(_ROOT, "src"), os.path.join(_ROOT, "src", "lp")):
+for _path in (_ROOT,):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
-from src.lp.mehrotra import MehrotraResult, StandardFormLP, solve_standard_form, to_standard_form
-from src.lp.simplex import SimplexError, _inf_norm, _simplex_iterations, _solve_basis
-from src.numerical_model import NumericalLP
+from opticore.lp.mehrotra import MehrotraResult, StandardFormLP, solve_standard_form, to_standard_form
+from opticore.lp.simplex import SimplexError, _inf_norm, _simplex_iterations, _solve_basis
+from opticore.numerical_model import NumericalLP
 from experiment.crossover.basis_identification import (
     BasisCandidate,
     RankAwareBasis,

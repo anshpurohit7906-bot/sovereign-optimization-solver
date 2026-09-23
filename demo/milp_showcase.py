@@ -7,26 +7,15 @@ CVXOPT, Gurobi) are invoked.
 from __future__ import annotations
 
 import time
-import numpy as np
 import sys
-from pathlib import Path
+import numpy as np
 
-# Bootstrap src so `qp` and `numerical_model` resolve canonical packages
-_HERE = Path(__file__).resolve().parent
-_ROOT = _HERE.parent
-_LP = str(_ROOT / "src" / "lp")
-_SRC = str(_ROOT / "src")
-# Remove any shadowing paths first
-for _p in (_ROOT, _LP, _SRC):
-    while _p in sys.path:
-        sys.path.remove(_p)
-# Insert in priority order: src/lp (for lp.*), src (for numerical_model, qp, etc.)
-for _p in (_LP, _SRC, str(_ROOT)):
-    sys.path.insert(0, _p)
-
-from numerical_model import NumericalLP, to_numeric, validate_numeric_lp, load_numeric_mps
-from lp.branch_bound import solve_milp, MilpResult
-from lp.mehrotra import solve_lp, to_standard_form, MehrotraError
+# The installed ``opticore`` package provides all solver modules.
+from opticore.numerical_model import (
+    NumericalLP, to_numeric, validate_numeric_lp, load_numeric_mps,
+)
+from opticore.lp.branch_bound import solve_milp, MilpResult
+from opticore.lp.mehrotra import solve_lp, to_standard_form, MehrotraError
 
 
 # ---------------------------------------------------------------------------

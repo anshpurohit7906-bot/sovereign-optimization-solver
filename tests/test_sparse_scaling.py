@@ -12,20 +12,17 @@ Verifies that:
 from __future__ import annotations
 
 import os
-import sys
 import tempfile
 
 import numpy as np
 import scipy.sparse as sp
 
+
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.normpath(os.path.join(_HERE, ".."))
-for _p in (os.path.join(_ROOT, "src"), os.path.join(_ROOT, "src", "lp"), _ROOT):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
 
-from scaling import scale_lp, ScaledLP  # noqa: E402
-from numerical_model import load_numeric_mps  # noqa: E402
+from opticore.scaling import scale_lp, ScaledLP  # noqa: E402
+from opticore.numerical_model import load_numeric_mps  # noqa: E402
 
 
 # ---------------------------------------------------------------------------

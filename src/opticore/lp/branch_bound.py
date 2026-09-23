@@ -46,9 +46,9 @@ from typing import Optional
 
 import numpy as np
 
-from numerical_model import NumericalLP
-from lp.mehrotra import solve_lp, to_standard_form, MehrotraError, StandardFormLP
-from lp.crossover import sparse_phase1, sparse_phase2, crossover_from_ipm
+from ..numerical_model import NumericalLP
+from .mehrotra import solve_lp, to_standard_form, MehrotraError, StandardFormLP
+from .crossover import sparse_phase1, sparse_phase2, crossover_from_ipm
 
 
 # ---------------------------------------------------------------------------

@@ -37,9 +37,8 @@ import scipy.sparse as sp
 
 # Import CPU reference solver (pdhg_mixed imports `numerical_model` from src/).
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(_REPO_ROOT / "src"))        # numerical_model
 sys.path.insert(0, str(_REPO_ROOT / "experiment" / "pdhg"))  # pdhg_mixed
-from numerical_model import NumericalLP  # noqa: E402
+from opticore.numerical_model import NumericalLP  # noqa: E402
 from pdhg_mixed import pdhg_mixed  # noqa: E402
 
 # Import GPU solver + its internals for solver-only timing.

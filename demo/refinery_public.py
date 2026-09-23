@@ -34,18 +34,14 @@ from __future__ import annotations
 
 import os
 import re
-import sys
 import time
 
 import numpy as np
 
 _ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-for _p in (os.path.join(_ROOT, "src"), os.path.join(_ROOT, "src", "lp"), _ROOT):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
 
-from numerical_model import NumericalLP, validate_numeric_lp
-from lp.mehrotra import solve_lp
+from opticore.numerical_model import NumericalLP, validate_numeric_lp
+from opticore.lp.mehrotra import solve_lp
 
 # ---------------------------------------------------------------------------
 # Published reference values (SAS mpex06 / sasoptpy worked solution)

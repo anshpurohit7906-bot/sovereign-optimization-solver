@@ -47,14 +47,13 @@ import scipy.linalg as sla
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.normpath(os.path.join(_HERE, "..", ".."))
-for _p in (_ROOT, os.path.join(_ROOT, "src"), os.path.join(_ROOT, "src", "lp"),
-           _HERE):
+for _p in (_ROOT, _HERE):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from numerical_model import load_numeric_mps  # noqa: E402
-from mehrotra import to_standard_form  # noqa: E402
-from simplex import (  # noqa: E402
+from opticore.numerical_model import load_numeric_mps  # noqa: E402
+from opticore.lp.mehrotra import to_standard_form  # noqa: E402
+from opticore.lp.simplex import (  # noqa: E402
     SimplexError,
     _inf_norm,
     _simplex_iterations,

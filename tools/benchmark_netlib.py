@@ -55,12 +55,9 @@ from scipy.optimize import linprog
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.normpath(os.path.join(_HERE, ".."))
-for _p in (_ROOT, os.path.join(_ROOT, "src"), os.path.join(_ROOT, "src", "lp")):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
 
-from numerical_model import load_numeric_mps  # noqa: E402
-from lp.mehrotra import solve_lp  # noqa: E402
+from opticore.numerical_model import load_numeric_mps  # noqa: E402
+from opticore.lp.mehrotra import solve_lp  # noqa: E402
 
 DEFAULT_DATA_DIR = os.path.join(_ROOT, "data")
 DEFAULT_OUT_MD = os.path.join(_ROOT, "results", "benchmark_netlib.md")

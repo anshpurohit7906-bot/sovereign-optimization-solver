@@ -31,18 +31,17 @@ from scipy.sparse.linalg import splu
 # ---------------------------------------------------------------------------
 _HERE = Path(__file__).resolve().parent
 _ROOT = _HERE.parent.parent
-_SRC = _ROOT / "src"
-for _p in (_SRC, _SRC / "lp", _ROOT):
+for _p in (_ROOT,):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
-from linear_system import (  # noqa: E402
+from opticore.lp.linear_system import (  # noqa: E402
     LinearSystemError,
     factor_reduced_system as _orig_factor_reduced_system,
     _splu_regularized as _orig_splu_regularized,
 )
-from numerical_model import load_numeric_mps  # noqa: E402
-from lp.mehrotra import solve_lp  # noqa: E402
+from opticore.numerical_model import load_numeric_mps  # noqa: E402
+from opticore.lp.mehrotra import solve_lp  # noqa: E402
 
 RESULTS_DIR = _ROOT / "results"
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -159,10 +158,10 @@ def run_single(model_file: str, ordering: str) -> dict[str, Any]:
     _state["records"] = []
     _iter_counter[0] = 0
 
-    import linear_system as _ls_mod
-    import mehrotra as _mh_mod
-    import lp.linear_system as _lps_mod
-    import lp.mehrotra as _lpm_mod
+    import opticore.lp.linear_system as _ls_mod
+    import opticore.lp.mehrotra as _mh_mod
+    import opticore.lp.linear_system as _lps_mod
+    import opticore.lp.mehrotra as _lpm_mod
     # The same file may be loaded under two module names (with both src and
     # src/lp on sys.path).  Patch ALL instances to guarantee interception.
     for _mod in (_ls_mod, _lps_mod):

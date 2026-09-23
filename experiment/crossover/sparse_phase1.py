@@ -33,12 +33,12 @@ from scipy.sparse.linalg import splu
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.normpath(os.path.join(_HERE, "..", ".."))
-for _p in (_ROOT, os.path.join(_ROOT, "src"), os.path.join(_ROOT, "src", "lp"), _HERE):
+for _p in (_ROOT, _HERE):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from numerical_model import load_numeric_mps
-from mehrotra import to_standard_form
+from opticore.numerical_model import load_numeric_mps
+from opticore.lp.mehrotra import to_standard_form
 from stage1_audit_rrqr import rrqr_basis
 
 
@@ -283,7 +283,7 @@ def run(name: str, max_iter: int) -> None:
 
     # Row/column equilibration BEFORE Phase I (matches run_pilot4 flow).
     # Operate on sparse row scaling + dense column scaling via absmax.
-    from scaling import scale_lp
+    from opticore.scaling import scale_lp
     S = scale_lp(A0.toarray(), b0, np.asarray(sf.c_min, float),
                  np.zeros(n), np.full(n, np.inf))
     A = sp.csc_matrix(S.A)          # scaled standard-form constraint matrix

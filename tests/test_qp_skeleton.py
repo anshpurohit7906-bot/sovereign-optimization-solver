@@ -8,17 +8,16 @@ is used; every optimum below is hand-verifiable.
 from __future__ import annotations
 
 import os
-import sys
 
 import numpy as np
 
+
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.normpath(os.path.join(_HERE, ".."))
-for _p in (os.path.join(_ROOT, "src"), os.path.join(_ROOT, "src", "lp"), _ROOT):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
 
-from lp.qp import NumericalQP, solve_qp, verify_qp_kkt, QpError
+# The installed ``opticore.lp.qp`` module is the legacy dense standard-form QP
+# path; the canonical sparse convex-QP package is ``opticore.qp``.
+from opticore.lp.qp import NumericalQP, solve_qp, verify_qp_kkt, QpError
 
 
 def _mk_qp(Q, c, A, b, rt, lb=None, ub=None, name="QP"):

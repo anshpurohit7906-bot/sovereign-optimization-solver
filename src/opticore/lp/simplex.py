@@ -18,7 +18,7 @@ from typing import Optional
 
 import numpy as np
 
-from mehrotra import StandardFormLP
+from .mehrotra import StandardFormLP
 
 
 class SimplexError(RuntimeError):

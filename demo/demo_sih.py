@@ -29,13 +29,10 @@ from typing import Optional
 import numpy as np
 
 _ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-for _p in (os.path.join(_ROOT, "src"), os.path.join(_ROOT, "src", "lp"), _ROOT):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
 
-from numerical_model import NumericalLP
-from lp.branch_bound import solve_milp
-from lp.qp import NumericalQP, solve_qp, verify_qp_kkt
+from opticore.numerical_model import NumericalLP
+from opticore.lp.branch_bound import solve_milp
+from opticore.lp.qp import NumericalQP, solve_qp, verify_qp_kkt
 
 
 # ============================================================

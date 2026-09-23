@@ -20,21 +20,22 @@ skeleton (``src/lp/branch_bound.py``) without touching the LP core:
 from __future__ import annotations
 
 import os
-import sys
 
 import numpy as np
 import scipy.sparse as sp
 
+
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.normpath(os.path.join(_HERE, ".."))
-for _p in (os.path.join(_ROOT, "src"), os.path.join(_ROOT, "src", "lp"), _ROOT):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
 
-from numerical_model import NumericalLP  # noqa: E402
-from lp import branch_bound as bb  # noqa: E402
-from lp.branch_bound import solve_milp, _relax, _drop_redundant_rows  # noqa: E402
-from lp.crossover import sparse_phase1, sparse_phase2, crossover_from_ipm  # noqa: E402
+from opticore.numerical_model import NumericalLP  # noqa: E402
+from opticore.lp import branch_bound as bb  # noqa: E402
+from opticore.lp.branch_bound import (  # noqa: E402
+    solve_milp, _relax, _drop_redundant_rows,
+)
+from opticore.lp.crossover import (  # noqa: E402
+    sparse_phase1, sparse_phase2, crossover_from_ipm,
+)
 
 
 def _mk_lp(name, A, b, c, row_types, lb, ub, row_names=None):
@@ -411,9 +412,9 @@ def test_expired_deadline_unit_checks():
     instantly.
     """
     import time as _time_mod
-    from lp.branch_bound import (_relax, _rounding_heuristic,
-                                 _repair_via_continuous_lp,
-                                 _strong_branch_select, _root_infeasible)
+    from opticore.lp.branch_bound import (_relax, _rounding_heuristic,
+                                          _repair_via_continuous_lp,
+                                          _strong_branch_select, _root_infeasible)
 
     lp = _knapsack_min()
     mask = np.ones(4, dtype=bool)

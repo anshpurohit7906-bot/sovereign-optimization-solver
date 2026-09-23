@@ -6,31 +6,15 @@ standard-form path and has its own tests in test_qp_skeleton.py.
 
 from __future__ import annotations
 
-import os
-import sys
-
 import numpy as np
 import pytest
 import scipy.sparse as sp
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-_ROOT = os.path.normpath(os.path.join(_HERE, ".."))
-_LP = os.path.join(_ROOT, "src", "lp")
-_SRC = os.path.join(_ROOT, "src")
-# NOTE: order enforcement, not first-insert.  Other test modules
-# (e.g. test_qp_skeleton.py) put "src/lp" BEFORE "src" on sys.path, which
-# makes bare "import qp" resolve to the legacy src/lp/qp.py module.
-# Rebuild the path so "src" precedes "src/lp" and "qp" resolves to the
-# canonical src/qp package.  "lp.qp" imports remain unaffected.
-for _p in (_ROOT, _LP, _SRC):
-    while _p in sys.path:
-        sys.path.remove(_p)
-for _p in (_LP, _SRC, _ROOT):
-    sys.path.insert(0, _p)
-
-from qp import QPProblem, QPValidationError, QPSolverError, solve_qp, certificate  # noqa: E402
-from qp import solver as solver_module  # noqa: E402
-from qp.linear_system import solve_kkt  # noqa: E402
+from opticore.qp import (  # noqa: E402
+    QPProblem, QPValidationError, QPSolverError, solve_qp, certificate,
+)
+from opticore.qp import solver as solver_module  # noqa: E402
+from opticore.qp.linear_system import solve_kkt  # noqa: E402
 
 
 def test_unconstrained():
@@ -89,7 +73,7 @@ def test_sparse_equality_constrained_qp():
 
 
 def test_sparse_kkt_inequality_path_never_calls_dense_solver(monkeypatch):
-    import qp.linear_system as ls
+    import opticore.qp.linear_system as ls
 
     def fail_dense(*args, **kwargs):
         raise AssertionError("dense solver was used")

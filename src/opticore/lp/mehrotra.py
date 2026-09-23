@@ -75,7 +75,6 @@ when even that practical accuracy was not attained.
 from __future__ import annotations
 
 import os
-import sys
 from dataclasses import dataclass
 from typing import Optional, Union
 
@@ -83,23 +82,19 @@ import numpy as np
 import scipy.sparse as sp
 from scipy.sparse.linalg import lsqr
 
-# ---------------------------------------------------------------------------
-# Imports.  The project uses a flat layout: ``linear_system`` lives beside
-# this file in ``src/lp`` while ``numerical_model`` lives in ``src``.  Make
-# both importable whether this file is run as a script or imported.
-# ---------------------------------------------------------------------------
-_HERE = os.path.dirname(os.path.abspath(__file__))
-for _path in (_HERE, os.path.dirname(_HERE)):
-    if _path not in sys.path:
-        sys.path.insert(0, _path)
-
-from linear_system import (  # noqa: E402
+from .linear_system import (
     LinearSystemError,
     factor_reduced_system,
     solve_reduced_system,
 )
-from numerical_model import NumericalLP, load_numeric_mps  # noqa: E402
-from scaling import scale_lp, unscale_solution  # noqa: E402
+from ..numerical_model import NumericalLP, load_numeric_mps
+from ..scaling import scale_lp, unscale_solution
+
+# ``_HERE`` is retained only for the module self-test in ``main()``, which
+# resolves ``data/afiro.mps`` relative to this file.  The ``sys.path``
+# manipulation that used to live here was needed by the old flat layout and
+# is obsolete now that this module uses package-relative imports.
+_HERE = os.path.dirname(os.path.abspath(__file__))
 
 
 def _gpu_available() -> bool:
@@ -110,7 +105,7 @@ def _gpu_available() -> bool:
     environments.
     """
     try:
-        from gpu_linear_system import gpu_available
+        from .gpu_linear_system import gpu_available
     except Exception:  # pragma: no cover - defensive, import is guarded
         return False
     return gpu_available()
@@ -983,7 +978,7 @@ def solve_standard_form(sf: StandardFormLP, *, tol: float = 1e-8, max_iter: int 
     # ------------------------------------------------------------------
     if crossover_fallback and status in ("stalled", "numerical_tail"):
         try:
-            from crossover import crossover_from_ipm, CROSSOVER_MERIT_RATIO
+            from .crossover import crossover_from_ipm, CROSSOVER_MERIT_RATIO
 
             # Pre-execution gate: skip crossover unless the IPM is already
             # near-optimal.  This avoids running simplex on hopelessly
@@ -1145,7 +1140,8 @@ def main() -> int:
     ok &= _run_case("Tiny LP (explicit maximize=True, known optimum +5)", _tiny_max_lp(), 5.0, tol,
                     maximize=True)
 
-    afiro_path = os.path.normpath(os.path.join(_HERE, "..", "..", "data", "afiro.mps"))
+    afiro_path = os.path.normpath(
+        os.path.join(_HERE, "..", "..", "..", "data", "afiro.mps"))
     afiro = load_numeric_mps(afiro_path)
     ok &= _run_case("AFIRO (minimization, known optimum -464.7531428571)", afiro,
                     -464.7531428571, tol)

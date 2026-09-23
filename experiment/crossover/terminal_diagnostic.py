@@ -13,9 +13,9 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from src.lp.linear_system import factor_reduced_system, solve_reduced_system
-from src.lp.mehrotra import MehrotraResult, StandardFormLP, solve_standard_form
-from src.scaling import unscale_solution
+from opticore.lp.linear_system import factor_reduced_system, solve_reduced_system
+from opticore.lp.mehrotra import MehrotraResult, StandardFormLP, solve_standard_form
+from opticore.scaling import unscale_solution
 
 
 @dataclass(frozen=True)

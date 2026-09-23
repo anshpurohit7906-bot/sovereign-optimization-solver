@@ -190,7 +190,7 @@ def factor_reduced_system(
         # Lazy import: CuPy/CUDA is optional; CPU-only environments never
         # touch this path.  Raises GPUBackendError when CUDA is unavailable
         # or the diagonal H is not strictly positive/finite.
-        from gpu_linear_system import factor_reduced_system_gpu
+        from .gpu_linear_system import factor_reduced_system_gpu
         return factor_reduced_system_gpu(H, A_eq, reg=reg)
 
     if H.ndim == 1:
@@ -272,7 +272,7 @@ def solve_reduced_system(
     if getattr(fac, "h_gpu", None) is not None:
         # GPU backend (backend="gpu"): dispatch to the CuPy factorization.
         # Lazy import; the factorization already validated CUDA availability.
-        from gpu_linear_system import solve_reduced_system_gpu
+        from .gpu_linear_system import solve_reduced_system_gpu
         return solve_reduced_system_gpu(fac, rhs_x, rhs_eq)
     if fac.h_diag is not None:
         # Sparse backend: diagonal H -> elementwise solves (identical to the

@@ -29,14 +29,13 @@ from scipy.sparse.linalg import splu
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.normpath(os.path.join(_HERE, "..", ".."))
-for _p in (_ROOT, os.path.join(_ROOT, "src"), os.path.join(_ROOT, "src", "lp"),
-           os.path.join(_HERE, "..", "crossover")):
+for _p in (_ROOT, os.path.join(_HERE, "..", "crossover")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from numerical_model import load_numeric_mps   # noqa: E402
-from mehrotra import to_standard_form           # noqa: E402
-from scaling import scale_lp                    # noqa: E402
+from opticore.numerical_model import load_numeric_mps   # noqa: E402
+from opticore.lp.mehrotra import to_standard_form           # noqa: E402
+from opticore.scaling import scale_lp                    # noqa: E402
 from sparse_phase1 import sparse_phase1         # noqa: E402
 
 RESULTS_DIR = os.path.join(_ROOT, "results")
