@@ -13,20 +13,17 @@ Verifies that:
 from __future__ import annotations
 
 import os
-import sys
 from unittest.mock import patch
 
 import numpy as np
 import scipy.sparse as sp
 
+
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.normpath(os.path.join(_HERE, ".."))
-for _p in (os.path.join(_ROOT, "src"), os.path.join(_ROOT, "src", "lp"), _ROOT):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
 
-from numerical_model import NumericalLP  # noqa: E402
-from lp.mehrotra import (  # noqa: E402
+from opticore.numerical_model import NumericalLP  # noqa: E402
+from opticore.lp.mehrotra import (  # noqa: E402
     _mehrotra_initial_point,
     _shift_positive,
     solve_lp,
@@ -194,7 +191,7 @@ def test_lsqr_failure_fallback():
     b = np.array([1., 2.])
     c = np.array([1., -1., 0.5])
 
-    with patch("lp.mehrotra.lsqr") as mock_lsqr:
+    with patch("opticore.lp.mehrotra.lsqr") as mock_lsqr:
         mock_lsqr.return_value = (
             np.full(3, np.nan), 7, 10, 1.0, 1.0, 1.0, 1.0, 1.0
         )
@@ -253,7 +250,7 @@ def test_small_sparse_uses_dense_fallback():
 
     # A is 2×3 = 6 dense entries.  Set dense_size_limit=10 so the
     # shape-product check (m*n=6 <= 10) allows densification.
-    with patch("lp.mehrotra.lsqr") as mock_lsqr:
+    with patch("opticore.lp.mehrotra.lsqr") as mock_lsqr:
         mock_lsqr.return_value = (
             np.full(3, np.nan), 7, 10, 1.0, 1.0, 1.0, 1.0, 1.0
         )
@@ -304,7 +301,7 @@ def test_trivial_initializer_fallback():
     b = 1e-6 * rng.standard_normal(m)
     c = 1e-6 * rng.standard_normal(n)
 
-    with patch("lp.mehrotra.lsqr") as mock_lsqr:
+    with patch("opticore.lp.mehrotra.lsqr") as mock_lsqr:
         mock_lsqr.return_value = (
             np.full(n, np.nan), 7, 10, 1.0, 1.0, 1.0, 1.0, 1.0
         )
@@ -334,7 +331,7 @@ def test_large_sparse_lsqr_failure_never_densifies():
     c = rng.standard_normal(n)
 
     # Force LSQR to return NaN so the fallback path is taken
-    with patch("lp.mehrotra.lsqr") as mock_lsqr:
+    with patch("opticore.lp.mehrotra.lsqr") as mock_lsqr:
         mock_lsqr.return_value = (
             np.full(n, np.nan), 7, 10, 1.0, 1.0, 1.0, 1.0, 1.0,
         )

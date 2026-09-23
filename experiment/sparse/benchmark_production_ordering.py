@@ -20,13 +20,12 @@ from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
 _ROOT = _HERE.parent.parent
-_SRC = _ROOT / "src"
-for _p in (_SRC, _SRC / "lp", _ROOT):
+for _p in (_ROOT,):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
-from numerical_model import load_numeric_mps  # noqa: E402
-from lp.mehrotra import solve_lp  # noqa: E402
+from opticore.numerical_model import load_numeric_mps  # noqa: E402
+from opticore.lp.mehrotra import solve_lp  # noqa: E402
 
 RESULTS_DIR = _ROOT / "results"
 

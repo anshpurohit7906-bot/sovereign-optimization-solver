@@ -17,7 +17,7 @@ import time
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.normpath(os.path.join(_HERE, "..", ".."))
-for _p in (_ROOT, os.path.join(_ROOT, "src"), os.path.join(_ROOT, "src", "lp"), _HERE):
+for _p in (_ROOT, _HERE):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
@@ -35,9 +35,9 @@ HIGHS_REF = -2581.139258884
 # STAGE 1: Prepare PILOT4 (load MPS -> std-form -> scale -> sparse Phase I)
 # ==========================================================================
 def stage1_prepare():
-    from numerical_model import load_numeric_mps
-    from mehrotra import to_standard_form
-    from scaling import scale_lp
+    from opticore.numerical_model import load_numeric_mps
+    from opticore.lp.mehrotra import to_standard_form
+    from opticore.scaling import scale_lp
     from sparse_phase1 import sparse_phase1
 
     os.makedirs(ARTIFACTS, exist_ok=True)
@@ -145,8 +145,8 @@ def stage3_certify():
     print("STAGE 3: STRICT ORIGINAL-COORDINATE CERTIFICATION")
     print("=" * 70)
 
-    from numerical_model import load_numeric_mps
-    from mehrotra import to_standard_form
+    from opticore.numerical_model import load_numeric_mps
+    from opticore.lp.mehrotra import to_standard_form
 
     t0 = time.perf_counter()
 

@@ -2,9 +2,9 @@
 import sys, time
 import numpy as np, scipy.sparse as sp
 from scipy.sparse.linalg import splu
-sys.path.insert(0, 'src'); sys.path.insert(0, 'src/lp'); sys.path.insert(0, 'experiment/crossover')
-from numerical_model import load_numeric_mps
-from mehrotra import to_standard_form
+sys.path.insert(0, 'experiment/crossover')
+from opticore.numerical_model import load_numeric_mps
+from opticore.lp.mehrotra import to_standard_form
 from stage1_audit_rrqr import rrqr_basis
 from _proto_sparse import repair
 

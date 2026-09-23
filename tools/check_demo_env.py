@@ -14,9 +14,6 @@ import sys
 import time
 
 _ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-for _p in (os.path.join(_ROOT, "src"), os.path.join(_ROOT, "src", "lp"), _ROOT):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
 
 import numpy as np
 
@@ -54,19 +51,19 @@ def main() -> int:
 
     # --- Source modules ---
     try:
-        from lp.mehrotra import solve_lp
+        from opticore.lp.mehrotra import solve_lp
         all_ok &= _check("solve_lp (production LP core)", True)
     except Exception as e:
         all_ok &= _check("solve_lp (production LP core)", False, str(e)[:60])
 
     try:
-        from lp.branch_bound import solve_milp
+        from opticore.lp.branch_bound import solve_milp
         all_ok &= _check("solve_milp (MILP B&B)", True)
     except Exception as e:
         all_ok &= _check("solve_milp (MILP B&B)", False, str(e)[:60])
 
     try:
-        from lp.qp import solve_qp, verify_qp_kkt
+        from opticore.lp.qp import solve_qp, verify_qp_kkt
         all_ok &= _check("solve_qp + verify_qp_kkt (QP)", True)
     except Exception as e:
         all_ok &= _check("solve_qp + verify_qp_kkt (QP)", False, str(e)[:60])
@@ -94,8 +91,8 @@ def main() -> int:
     print()
     t0 = time.perf_counter()
     try:
-        from numerical_model import load_numeric_mps
-        from lp.mehrotra import solve_lp
+        from opticore.numerical_model import load_numeric_mps
+        from opticore.lp.mehrotra import solve_lp
         lp = load_numeric_mps(os.path.join(_ROOT, "data", "afiro.mps"), sparse=True)
         res = solve_lp(lp)
         obj_ok = abs(res.objective - (-464.753142659)) < 1e-4
@@ -108,8 +105,8 @@ def main() -> int:
     # --- Quick MILP smoke ---
     t0 = time.perf_counter()
     try:
-        from numerical_model import NumericalLP
-        from lp.branch_bound import solve_milp
+        from opticore.numerical_model import NumericalLP
+        from opticore.lp.branch_bound import solve_milp
         A = np.array([[3., 4., 2., 6.]])
         b = np.array([8.])
         c = np.array([4., 5., 3., 7.])
@@ -127,7 +124,7 @@ def main() -> int:
     # --- Quick QP smoke ---
     t0 = time.perf_counter()
     try:
-        from lp.qp import NumericalQP, solve_qp
+        from opticore.lp.qp import NumericalQP, solve_qp
         qp = NumericalQP("T", np.eye(2), np.array([1., -2.]),
                           np.array([[1., 1.], [1., -1.]]), np.array([1., .5]),
                           ("G", "L"), np.zeros(2), np.full(2, np.inf))

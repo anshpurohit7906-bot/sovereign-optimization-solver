@@ -20,8 +20,7 @@ from scipy.sparse.linalg import splu
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.normpath(os.path.join(_HERE, "..", ".."))
-for _p in (_ROOT, os.path.join(_ROOT, "src"), os.path.join(_ROOT, "src", "lp"),
-           os.path.join(_HERE, "..", "crossover")):
+for _p in (_ROOT, os.path.join(_HERE, "..", "crossover")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 

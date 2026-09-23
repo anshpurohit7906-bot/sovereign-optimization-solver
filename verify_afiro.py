@@ -5,10 +5,10 @@ from pathlib import Path
 import numpy as np
 from scipy.optimize import linprog
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from numerical_model import load_numeric_mps
+from opticore.numerical_model import load_numeric_mps
 from experiment.pdhg.pdhg_mixed import pdhg_mixed
 
 

@@ -19,14 +19,13 @@ import scipy.sparse as sp
 # ---------------------------------------------------------------------------
 _HERE = Path(__file__).resolve().parent
 _ROOT = _HERE.parent.parent
-_SRC = _ROOT / "src"
-for _p in (_SRC, _SRC / "lp", _ROOT):
+for _p in (_ROOT,):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
-from numerical_model import NumericalLP  # noqa: E402
-from scaling import scale_lp  # noqa: E402
-import mehrotra as _mh  # noqa: E402
+from opticore.numerical_model import NumericalLP  # noqa: E402
+from opticore.scaling import scale_lp  # noqa: E402
+import opticore.lp.mehrotra as _mh  # noqa: E402
 
 # Optional psutil
 try:

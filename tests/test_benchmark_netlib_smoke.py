@@ -20,13 +20,18 @@ import sys
 
 import numpy as np
 
+
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.normpath(os.path.join(_HERE, ".."))
-for _p in (_ROOT, os.path.join(_ROOT, "tools"), os.path.join(_ROOT, "src")):
+for _p in (_ROOT, os.path.join(_ROOT, "tools")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-import benchmark_netlib  # noqa: E402
+from tools.benchmark_netlib import run_benchmark  # noqa: E402
+from tools.benchmark_netlib import PASS_OBJ_TOL  # noqa: E402
+from tools.benchmark_netlib import PILOT4_OBJECTIVE  # noqa: E402
+from tools.benchmark_netlib import PILOT87_OBJECTIVE  # noqa: E402
+from tools.benchmark_netlib import _highs_reference  # noqa: E402
 
 _DATA = os.path.join(_ROOT, "data")
 
@@ -35,7 +40,7 @@ def test_smoke_run_afiro_blend(tmp_path) -> None:
     out_md = os.path.join(tmp_path, "benchmark_netlib.md")
     out_csv = os.path.join(tmp_path, "benchmark_netlib.csv")
 
-    rows = benchmark_netlib.run_benchmark(
+    rows = run_benchmark(
         data_dir=_DATA,
         out_md=out_md,
         out_csv=out_csv,
@@ -49,7 +54,7 @@ def test_smoke_run_afiro_blend(tmp_path) -> None:
         assert r["status"] == "optimal", r
         assert r["method"] == "ipm", r
         assert r["pass"] is True, r
-        assert r["rel_obj_error"] <= benchmark_netlib.PASS_OBJ_TOL, r
+        assert r["rel_obj_error"] <= PASS_OBJ_TOL, r
         assert np.isfinite(r["rel_gap"])
         assert r["m"] > 0 and r["n"] > 0 and r["nnz"] > 0
 
@@ -72,10 +77,10 @@ def test_smoke_run_afiro_blend(tmp_path) -> None:
 
 def test_run_benchmark_verifies_against_highs() -> None:
     """The harness objective and its HiGHS oracle must agree on afiro."""
-    from numerical_model import load_numeric_mps  # noqa: E402
+    from opticore.numerical_model import load_numeric_mps  # noqa: E402
 
     lp = load_numeric_mps(os.path.join(_DATA, "afiro.mps"), sparse=True)
-    ref = benchmark_netlib._highs_reference(lp)
+    ref = _highs_reference(lp)
     assert ref.success
     # HiGHS oracle reproduces the well-known NETLIB afiro optimum.
     assert abs(float(ref.fun) - (-464.7531428571)) < 1e-9
@@ -88,7 +93,7 @@ def test_pilot4_plain_via_automatic_crossover(tmp_path) -> None:
     out_md = os.path.join(tmp_path, "bm_p4.md")
     out_csv = os.path.join(tmp_path, "bm_p4.csv")
 
-    rows = benchmark_netlib.run_benchmark(
+    rows = run_benchmark(
         data_dir=_DATA,
         out_md=out_md,
         out_csv=out_csv,
@@ -106,8 +111,8 @@ def test_pilot4_plain_via_automatic_crossover(tmp_path) -> None:
     assert r["phase2_pivots"] and r["phase2_pivots"] > 0
     # The production path reproduces the independently certified crossover
     # optimum from artifacts/pilot4/p4_crossover_certificate.txt.
-    assert abs(r["solver_objective"] - benchmark_netlib.PILOT4_OBJECTIVE) < 1e-6
-    assert r["rel_obj_error"] <= benchmark_netlib.PASS_OBJ_TOL
+    assert abs(r["solver_objective"] - PILOT4_OBJECTIVE) < 1e-6
+    assert r["rel_obj_error"] <= PASS_OBJ_TOL
 
 
 def test_pilot87_folded_from_strict_certificate(tmp_path) -> None:
@@ -115,7 +120,7 @@ def test_pilot87_folded_from_strict_certificate(tmp_path) -> None:
     out_md = os.path.join(tmp_path, "bm_p87.md")
     out_csv = os.path.join(tmp_path, "bm_p87.csv")
 
-    rows = benchmark_netlib.run_benchmark(
+    rows = run_benchmark(
         data_dir=_DATA,
         out_md=out_md,
         out_csv=out_csv,
@@ -129,4 +134,4 @@ def test_pilot87_folded_from_strict_certificate(tmp_path) -> None:
     assert r["method"] == "certified"
     assert r["status"] == "certified"
     assert r["pass"] is True
-    assert abs(r["solver_objective"] - benchmark_netlib.PILOT87_OBJECTIVE) < 1e-6
+    assert abs(r["solver_objective"] - PILOT87_OBJECTIVE) < 1e-6

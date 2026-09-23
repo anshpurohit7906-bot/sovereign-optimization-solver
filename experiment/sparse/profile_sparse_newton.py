@@ -22,15 +22,14 @@ import scipy.sparse as sp
 # ---------------------------------------------------------------------------
 _HERE = Path(__file__).resolve().parent
 _ROOT = _HERE.parent.parent
-_SRC = _ROOT / "src"
-for _p in (_SRC, _SRC / "lp", _ROOT):
+for _p in (_ROOT,):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
-from numerical_model import NumericalLP  # noqa: E402
-from scaling import scale_lp  # noqa: E402
-import mehrotra as _mh  # noqa: E402
-from linear_system import factor_reduced_system, solve_reduced_system  # noqa: E402
+from opticore.numerical_model import NumericalLP  # noqa: E402
+from opticore.scaling import scale_lp  # noqa: E402
+import opticore.lp.mehrotra as _mh  # noqa: E402
+from opticore.lp.linear_system import factor_reduced_system, solve_reduced_system  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -185,7 +184,7 @@ def _profiled_solve_reduced_system(fac, rhs_x, rhs_eq):
         profiler.iter_timings[profiler.current_iter].append(rec)
     return dx, dy
 
-import linear_system
+import opticore.lp.linear_system as linear_system
 linear_system.factor_reduced_system = _profiled_factor_reduced_system
 linear_system.solve_reduced_system = _profiled_solve_reduced_system
 _mh.factor_reduced_system = _profiled_factor_reduced_system

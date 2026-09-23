@@ -18,13 +18,13 @@ import os, sys, time, argparse, numpy as np, scipy.sparse as sp
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.normpath(os.path.join(_HERE, "..", ".."))
-for _p in (_ROOT, os.path.join(_ROOT, "src"), os.path.join(_ROOT, "src", "lp"), _HERE):
+for _p in (_ROOT, _HERE):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from numerical_model import load_numeric_mps
-from mehrotra import to_standard_form
-from scaling import scale_lp
+from opticore.numerical_model import load_numeric_mps
+from opticore.lp.mehrotra import to_standard_form
+from opticore.scaling import scale_lp
 from sparse_phase1 import sparse_phase1
 
 

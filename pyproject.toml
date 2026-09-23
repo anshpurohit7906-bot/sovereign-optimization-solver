@@ -1,16 +1,27 @@
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "opticore"
 version = "0.1.0"
-description = "OPTICORE - indigenous LP solver (SIH 26119)"
+description = "From-scratch LP, QP and MILP optimization solver"
+readme = "README.md"
 requires-python = ">=3.10"
 dependencies = ["numpy", "scipy"]
 
+[project.optional-dependencies]
+dev = ["pytest"]
+gpu = ["cupy-cuda12x>=13.0"]
+
 [project.scripts]
-opticore = "opticore:main"
+opticore = "opticore.cli:main"
 
 [tool.setuptools]
-py-modules = ["opticore"]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

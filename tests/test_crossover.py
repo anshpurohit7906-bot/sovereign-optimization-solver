@@ -6,17 +6,13 @@ the ``crossover_from_ipm`` orchestrator, and the mehrotra.py fallback gate.
 from __future__ import annotations
 
 import os
-import sys
 
 import numpy as np
 import scipy.sparse as sp
 
 _ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
-for _p in (_ROOT, os.path.join(_ROOT, "src"), os.path.join(_ROOT, "src", "lp")):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
 
-import crossover  # noqa: E402
+from opticore.lp import crossover  # noqa: E402
 
 
 def _small_feasible_toy():
@@ -103,8 +99,8 @@ class TestCrossoverOrchestrator:
 class TestMehrotraFallback:
     def test_pilot4_end_to_end_optimal(self):
         """crossover_fallback=True rescues stalled PILOT4 IPM."""
-        from numerical_model import load_numeric_mps
-        from mehrotra import solve_lp
+        from opticore.numerical_model import load_numeric_mps
+        from opticore.lp.mehrotra import solve_lp
         lp = load_numeric_mps(os.path.join(_ROOT, "data", "pilot4_plain.mps"))
         res = solve_lp(lp, tol=1e-7, max_iter=100, crossover_fallback=True)
         assert res.status == "optimal", f"{res.status}: {res.message}"
@@ -114,8 +110,8 @@ class TestMehrotraFallback:
 
     def test_pilot4_default_no_crossover(self):
         """Default solve_lp (crossover_fallback=False) returns stalled."""
-        from numerical_model import load_numeric_mps
-        from mehrotra import solve_lp
+        from opticore.numerical_model import load_numeric_mps
+        from opticore.lp.mehrotra import solve_lp
         lp = load_numeric_mps(os.path.join(_ROOT, "data", "pilot4_plain.mps"))
         res = solve_lp(lp, tol=1e-7, max_iter=100)
         assert res.status == "stalled", f"expected stalled, got {res.status}"
@@ -125,20 +121,20 @@ class TestMehrotraFallback:
         """When best_merit > CROSSOVER_MERIT_RATIO * tol, crossover is
         never called even with crossover_fallback=True."""
         from unittest.mock import patch
-        from numerical_model import load_numeric_mps
-        from mehrotra import solve_lp
+        from opticore.numerical_model import load_numeric_mps
+        from opticore.lp.mehrotra import solve_lp
         lp = load_numeric_mps(os.path.join(_ROOT, "data", "pilot4_plain.mps"))
         # Force early stall by raising mu_floor well above typical mu:
         # IPM stops almost immediately and best_merit stays large.
-        with patch("crossover.crossover_from_ipm") as mock_crossover:
+        with patch("opticore.lp.crossover.crossover_from_ipm") as mock_crossover:
             res = solve_lp(lp, tol=1e-7, max_iter=100,
                            crossover_fallback=True, mu_floor=1e6)
             assert res.status in ("stalled", "numerical_tail")
             mock_crossover.assert_not_called()
 
     def test_small_lp_no_crossover_needed(self):
-        from numerical_model import NumericalLP
-        from mehrotra import solve_lp
+        from opticore.numerical_model import NumericalLP
+        from opticore.lp.mehrotra import solve_lp
         lp = NumericalLP(
             name="TINY", objective_name="COST",
             A=np.array([[1.0, 1.0, 1.0], [1.0, 2.0, 0.0], [3.0, 1.0, 0.0]]),

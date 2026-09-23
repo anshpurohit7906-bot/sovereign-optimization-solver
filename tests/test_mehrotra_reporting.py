@@ -19,19 +19,16 @@ Background (see the solver/linear_system docstrings for the full rationale):
 from __future__ import annotations
 
 import os
-import sys
 
 import numpy as np
 
+
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.normpath(os.path.join(_HERE, ".."))
-for _p in (_ROOT, os.path.join(_ROOT, "src"), os.path.join(_ROOT, "src", "lp")):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
 
-from linear_system import MAX_RHO_P, factor_reduced_system  # noqa: E402
-from numerical_model import load_numeric_mps  # noqa: E402
-from mehrotra import solve_lp  # noqa: E402
+from opticore.lp.linear_system import MAX_RHO_P, factor_reduced_system  # noqa: E402
+from opticore.numerical_model import load_numeric_mps  # noqa: E402
+from opticore.lp.mehrotra import solve_lp  # noqa: E402
 
 _DATA = os.path.join(_ROOT, "data")
 _AFIRO = os.path.join(_DATA, "afiro.mps")
@@ -118,7 +115,7 @@ def test_h_regularization_uncapped_for_small_h():
 # ---------------------------------------------------------------------------
 
 def _fx_lp():
-    from numerical_model import NumericalLP
+    from opticore.numerical_model import NumericalLP
     return NumericalLP(
         name="t", objective_name="obj",
         A=np.zeros((0, 1)), b=np.zeros(0), c=np.array([3.0]),
@@ -127,7 +124,7 @@ def _fx_lp():
 
 
 def _lo_bound_lp():
-    from numerical_model import NumericalLP
+    from opticore.numerical_model import NumericalLP
     # min 2x s.t. x + s = 5, x >= 3  ->  x = 3, objective 6.
     # The standard form shifts x = 3 + x', so c_min @ x' = 0 and the constant
     # offset c_orig @ orig_offset = 6 must be reported, not 0.
@@ -142,8 +139,8 @@ def test_simplex_objective_includes_bound_offset():
     """Simplex must report c_orig @ x_original, not c_min @ x_standard:
     bound shifts (LO/UP/box/FX) add a constant the standard-form objective
     does not contain."""
-    from mehrotra import to_standard_form
-    from simplex import solve_simplex
+    from opticore.lp.mehrotra import to_standard_form
+    from opticore.lp.simplex import solve_simplex
     res = solve_simplex(to_standard_form(_lo_bound_lp()))
     assert res.status == "optimal"
     assert abs(res.objective - 6.0) <= 1e-9, res.objective
@@ -154,8 +151,8 @@ def test_all_fixed_variables_constant_objective_both_solvers():
     """An LP whose variables are all FX has an empty standard form
     (n = 0); both solvers must return the constant objective without
     crashing on empty reductions."""
-    from mehrotra import solve_standard_form, to_standard_form
-    from simplex import solve_simplex
+    from opticore.lp.mehrotra import solve_standard_form, to_standard_form
+    from opticore.lp.simplex import solve_simplex
     sf = to_standard_form(_fx_lp())
     assert sf.A.shape[0] == 0 and sf.A.shape[1] == 0
     for res in (solve_standard_form(sf), solve_simplex(sf)):
@@ -168,9 +165,9 @@ def test_maximize_with_upper_bound_offset():
     """max x s.t. x + s = 4, x <= 4 (UP, free lower bound): the UP
     reflection negates the standard-form column and absorbs the offset 4;
     the reported original objective must still be 4."""
-    from mehrotra import to_standard_form
-    from simplex import solve_simplex
-    from numerical_model import NumericalLP
+    from opticore.lp.mehrotra import to_standard_form
+    from opticore.lp.simplex import solve_simplex
+    from opticore.numerical_model import NumericalLP
     lp = NumericalLP(
         name="t3", objective_name="obj",
         A=np.array([[1.0]]), b=np.array([4.0]), c=np.array([1.0]),

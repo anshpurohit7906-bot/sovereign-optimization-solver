@@ -35,15 +35,14 @@ import scipy.sparse as sp
 
 _HERE = Path(__file__).resolve().parent
 _ROOT = _HERE.parent.parent
-_SRC = _ROOT / "src"
-for _p in (_SRC, _SRC / "lp", _ROOT):
+for _p in (_ROOT,):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
 # Project flat-layout imports (do not import external solvers).
-from numerical_model import load_numeric_mps, NumericalLP  # noqa: E402
-from scaling import scale_lp  # noqa: E402
-from mehrotra import MehrotraResult, solve_lp, to_standard_form  # noqa: E402
+from opticore.numerical_model import load_numeric_mps, NumericalLP  # noqa: E402
+from opticore.scaling import scale_lp  # noqa: E402
+from opticore.lp.mehrotra import MehrotraResult, solve_lp, to_standard_form  # noqa: E402
 
 # Optional dependency: only used for process-RSS reporting when present.
 try:  # pragma: no cover - environment dependent

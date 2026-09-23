@@ -10,22 +10,10 @@ import time
 import sys
 from pathlib import Path
 
-# Bootstrap src so `qp` resolves to the canonical package (not legacy src/lp/qp)
-_HERE = Path(__file__).resolve().parent
-_ROOT = _HERE.parent
-_LP = str(_ROOT / "src" / "lp")
-_SRC = str(_ROOT / "src")
-# Remove any shadowing paths first
-for _p in (_ROOT, _LP, _SRC):
-    while _p in sys.path:
-        sys.path.remove(_p)
-# Insert in reverse priority order so `src` (qp package) takes precedence over `src/lp` (qp module)
-for _p in (_LP, _SRC, _ROOT):
-    sys.path.insert(0, _p)
-
-from qp.qps import read_qps
-from qp.solver import solve_qp
-from qp.verify import certificate
+# The installed ``opticore.qp`` package is the canonical sparse convex-QP path.
+from opticore.qp.qps import read_qps
+from opticore.qp.solver import solve_qp
+from opticore.qp.verify import certificate
 
 
 BENCHMARKS = [

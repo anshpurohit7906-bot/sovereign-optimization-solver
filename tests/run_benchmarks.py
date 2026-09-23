@@ -3,18 +3,15 @@
 from __future__ import annotations
 
 import os
-import sys
 import time
 import numpy as np
 
+
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.normpath(os.path.join(_HERE, ".."))
-for _p in (os.path.join(_ROOT, "src"), os.path.join(_ROOT, "src", "lp"), _ROOT):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
 
-from numerical_model import load_numeric_mps
-from lp.mehrotra import solve_lp
+from opticore.numerical_model import load_numeric_mps
+from opticore.lp.mehrotra import solve_lp
 
 BENCHMARKS = [
     {"file": "afiro.mps", "expected_obj": -464.7531428571, "tol": 1e-7, "max_iter": 100},

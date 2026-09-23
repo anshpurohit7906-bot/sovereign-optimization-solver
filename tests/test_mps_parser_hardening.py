@@ -12,16 +12,13 @@ Each supported-construct test asserts correct parsing of integer/binary variable
 from __future__ import annotations
 
 import os
-import sys
 import tempfile
+
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.normpath(os.path.join(_HERE, ".."))
-for _p in (_ROOT, os.path.join(_ROOT, "src"), os.path.join(_ROOT, "src", "lp")):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
 
-from mps_parser import MPSParser, MPSParseError  # noqa: E402
+from opticore.mps_parser import MPSParser, MPSParseError  # noqa: E402
 
 
 _BASE_HEADER = """NAME          TESTPROB

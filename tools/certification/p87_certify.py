@@ -15,13 +15,9 @@ import scipy.sparse as sp
 _HERE = os.path.dirname(os.path.abspath(os.path.dirname(__file__)))
 _ROOT = os.path.normpath(os.path.join(_HERE, ".."))
 SCRATCH = os.path.join(_ROOT, "artifacts", "pilot87")
-for _p in (_ROOT, os.path.join(_ROOT, "src"), os.path.join(_ROOT, "src", "lp"),
-           os.path.join(_ROOT, "experiment", "crossover")):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
 
-from numerical_model import load_numeric_mps
-from mehrotra import to_standard_form
+from opticore.numerical_model import load_numeric_mps
+from opticore.lp.mehrotra import to_standard_form
 
 HIGHS_REF = 301.710347333
 

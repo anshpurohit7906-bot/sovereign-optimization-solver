@@ -5,24 +5,9 @@ Adapted from the teammate drop; uses the repo's standard path bootstrap.
 
 from __future__ import annotations
 
-import os
-import sys
-
 import numpy as np
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-_ROOT = os.path.normpath(os.path.join(_HERE, ".."))
-_LP = os.path.join(_ROOT, "src", "lp")
-_SRC = os.path.join(_ROOT, "src")
-# Order enforcement so bare "qp" resolves to the src/qp package, not the
-# legacy src/lp/qp.py module (see test_qp_sparse.py for rationale).
-for _p in (_ROOT, _LP, _SRC):
-    while _p in sys.path:
-        sys.path.remove(_p)
-for _p in (_LP, _SRC, _ROOT):
-    sys.path.insert(0, _p)
-
-from qp.qps import read_qps  # noqa: E402
+from opticore.qp.qps import read_qps  # noqa: E402
 
 
 def test_qps_reader_minimal(tmp_path):

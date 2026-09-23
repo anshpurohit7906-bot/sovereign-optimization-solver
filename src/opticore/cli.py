@@ -47,17 +47,11 @@ _HARD_EXIT = False
 
 def _project_root() -> str:
     here = os.path.dirname(os.path.abspath(__file__))
-    # Installed as a top-level ``opticore`` module at the repo root, so the
-    # project root IS this file's directory (not its parent).
-    return os.path.normpath(here)
-
-
-def _ensure_path() -> str:
-    root = _project_root()
-    for _p in (os.path.join(root, "src"), os.path.join(root, "src", "lp"), root):
-        if _p not in sys.path:
-            sys.path.insert(0, _p)
-    return root
+    # The CLI now lives inside the ``opticore`` package.  ``__file__`` points
+    # into ``src/opticore/``, so the repository root is still one parent up
+    # from this package's path component and is used only for locating
+    # repository-relative asset paths (e.g. stored pilot87 certificate files).
+    return os.path.normpath(os.path.join(here, ".."))
 
 
 def _parse_args(argv=None):
@@ -119,11 +113,10 @@ def _fmt_sci(value) -> str:
 
 
 def cmd_solve(args) -> int:
-    _ensure_path()
     try:
-        from mps_parser import MPSParseError
-        from numerical_model import NumericalModelError, load_numeric_mps
-        from lp.mehrotra import MehrotraError, solve_lp
+        from opticore.mps_parser import MPSParseError
+        from opticore.numerical_model import NumericalModelError, load_numeric_mps
+        from opticore.lp.mehrotra import MehrotraError, solve_lp
     except Exception as exc:
         return _fail(f"cannot initialise the OPTICORE engine ({exc})",
                      verbose=args.verbose, exc=exc)
@@ -228,11 +221,10 @@ def cmd_solve(args) -> int:
 
 
 def cmd_solve_qp(args) -> int:
-    _ensure_path()
     try:
-        from src.qp.qps import read_qps
-        from src.qp.solver import solve_qp
-        from src.qp.verify import certificate
+        from opticore.qp.qps import read_qps
+        from opticore.qp.solver import solve_qp
+        from opticore.qp.verify import certificate
     except Exception as exc:
         return _fail(f"cannot initialise the QP engine ({exc})",
                      verbose=args.verbose, exc=exc)

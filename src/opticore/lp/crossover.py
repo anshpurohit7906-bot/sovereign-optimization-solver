@@ -34,19 +34,12 @@ logic validated on PILOT4 (m=657) and PILOT87 (m=3608) -- see
 from __future__ import annotations
 
 import hashlib
-import os
-import sys
 import time
 
 import numpy as np
 import scipy.linalg as sla
 import scipy.sparse as sp
 from scipy.sparse.linalg import splu
-
-_HERE = os.path.dirname(os.path.abspath(__file__))
-for _p in (_HERE, os.path.dirname(_HERE)):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
 
 __all__ = [
     "CROSSOVER_MERIT_RATIO",

@@ -7,12 +7,12 @@ import sys
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(os.path.dirname(_HERE))
-for _path in (_ROOT, os.path.join(_ROOT, "src"), os.path.join(_ROOT, "src", "lp")):
+for _path in (_ROOT,):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
-from src.lp.mehrotra import to_standard_form
-from src.numerical_model import load_numeric_mps
+from opticore.lp.mehrotra import to_standard_form
+from opticore.numerical_model import load_numeric_mps
 from experiment.crossover.solver import evaluate_rank_aware_basis
 from experiment.crossover.terminal_diagnostic import compare_newton_residuals, run_with_terminal_capture
 

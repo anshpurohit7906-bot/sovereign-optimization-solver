@@ -8,10 +8,10 @@ from pathlib import Path
 
 import numpy as np
 
-from mps_parser import MPSParser
-from numerical_model import to_numeric, NumericalLP
+from opticore.mps_parser import MPSParser
+from opticore.numerical_model import to_numeric, NumericalLP
 from experiment.pdhg.pdhg_mixed import pdhg_mixed, MixedPDHGResult
-from scaling import scale_lp, unscale_solution, ScaledLP
+from opticore.scaling import scale_lp, unscale_solution, ScaledLP
 
 
 @dataclass(frozen=True)

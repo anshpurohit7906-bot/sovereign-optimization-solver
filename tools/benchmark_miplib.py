@@ -28,12 +28,9 @@ from scipy.optimize import milp, LinearConstraint, Bounds
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.normpath(os.path.join(_HERE, ".."))
-for _p in (os.path.join(_ROOT, "src"), os.path.join(_ROOT, "src", "lp"), _ROOT):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
 
-from numerical_model import load_numeric_mps
-from lp.branch_bound import solve_milp
+from opticore.numerical_model import load_numeric_mps
+from opticore.lp.branch_bound import solve_milp
 
 # Real MIPLIB2017 instances available in data/
 # All have binary variables; 50v-10 also has general integers (LI/UI bounds)

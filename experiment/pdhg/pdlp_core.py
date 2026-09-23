@@ -24,8 +24,8 @@ from typing import Optional
 
 import numpy as np
 
-from constraint_form import BoundedConstraintLP, to_bounded_constraint
-from numerical_model import load_numeric_mps
+from opticore.constraint_form import BoundedConstraintLP, to_bounded_constraint
+from opticore.numerical_model import load_numeric_mps
 
 
 @dataclass(frozen=True)

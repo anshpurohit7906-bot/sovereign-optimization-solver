@@ -9,7 +9,7 @@ from typing import Optional, Union
 import numpy as np
 import scipy.sparse as sp
 
-from mps_parser import LPModel, MPSParser
+from .mps_parser import LPModel, MPSParser
 
 
 class NumericalModelError(ValueError):

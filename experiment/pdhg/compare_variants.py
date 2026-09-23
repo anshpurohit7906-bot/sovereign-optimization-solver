@@ -33,14 +33,13 @@ import scipy.sparse as sp
 
 # Make src/ importable
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-_SRC = _REPO_ROOT / "src"
 _EXPERIMENT_PDHG = _REPO_ROOT / "experiment" / "pdhg"
 
-for _p in (_SRC, _REPO_ROOT, _EXPERIMENT_PDHG):
+for _p in (_REPO_ROOT, _EXPERIMENT_PDHG):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
-from numerical_model import NumericalLP  # noqa: E402
+from opticore.numerical_model import NumericalLP  # noqa: E402
 
 # Import all 5 variants
 from pdhg_mixed import pdhg_mixed  # noqa: E402

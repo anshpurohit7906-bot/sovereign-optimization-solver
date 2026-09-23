@@ -21,7 +21,6 @@ Covers all 18 SIH acceptance criteria using hand-verifiable LPs:
 from __future__ import annotations
 
 import os
-import sys
 from dataclasses import dataclass
 from typing import Optional, Callable
 import numpy as np
@@ -29,12 +28,9 @@ import numpy as np
 # Ensure src and src/lp are importable
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.normpath(os.path.join(_HERE, ".."))
-for _p in (os.path.join(_ROOT, "src"), os.path.join(_ROOT, "src", "lp"), _ROOT):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
 
-from numerical_model import NumericalLP, load_numeric_mps
-from lp.mehrotra import solve_lp, MehrotraResult, MehrotraError
+from opticore.numerical_model import NumericalLP, load_numeric_mps
+from opticore.lp.mehrotra import solve_lp, MehrotraResult, MehrotraError
 
 
 @dataclass

@@ -14,7 +14,7 @@ from typing import Optional
 
 import numpy as np
 
-from numerical_model import NumericalLP, load_numeric_mps, validate_numeric_lp
+from opticore.numerical_model import NumericalLP, load_numeric_mps, validate_numeric_lp
 
 
 class BBPDHGError(ValueError):

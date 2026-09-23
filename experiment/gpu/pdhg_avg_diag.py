@@ -36,7 +36,6 @@ import scipy.sparse as sp
 # Make ``numerical_model`` (in ``src/``) importable, mirroring the reference
 # solver's ``from numerical_model import ...`` without touching ``src/``.
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-_SRC = _REPO_ROOT / "src"
 
 # ---------------------------------------------------------------------------
 # Sparse spectral norm estimate (copied verbatim from pdhg_mixed)
@@ -82,11 +81,11 @@ def _partition_rows(lp: NumericalLP) -> tuple[np.ndarray, np.ndarray]:
         )
     return np.flatnonzero(row_types == "E"), np.flatnonzero(row_types == "L")
 
-for _p in (_SRC, _REPO_ROOT):
+for _p in (_REPO_ROOT,):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
-from numerical_model import NumericalLP, validate_numeric_lp  # noqa: E402
+from opticore.numerical_model import NumericalLP, validate_numeric_lp  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Diagnostics (copied verbatim from pdhg_mixed)
