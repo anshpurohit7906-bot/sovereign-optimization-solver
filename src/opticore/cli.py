@@ -258,9 +258,14 @@ def cmd_solve_qp(args) -> int:
                      verbose=args.verbose, exc=exc)
 
     if not cert["ok"]:
-        return _fail(f"KKT certificate FAILED on {path!r}: "
-                     f"max_violation={max(cert['stationarity'], cert['equality_residual'],
-                     cert['inequality_violation'], cert['dual_violation'], cert['complementarity']):.3e}",
+        worst = max(
+            cert["stationarity"],
+            cert["equality_residual"],
+            cert["inequality_violation"],
+            cert["dual_violation"],
+            cert["complementarity"],
+        )
+        return _fail(f"KKT certificate FAILED on {path!r}: max_violation={worst:.3e}",
                      verbose=args.verbose)
 
     # ---- report -------------------------------------------------------
