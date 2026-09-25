@@ -6,6 +6,8 @@ Public surface (repository root)::
     opticore solve data/pilot87.mps --crossover
     opticore solve data/pilot87.mps --crossover --cert-fallback
     opticore solve data/pilot87.mps --crossover --time-limit 120
+    opticore solve-qp data/qp/real_benchmarks/maros_mesaras/QGROW15.SIF
+    opticore solve-milp data/pk1.mps --time-limit 60
 
 Semantics: ``opticore solve <mps>`` ALWAYS means a genuine live solve by
 default.  The stored PILOT87 strict certificate is an explicit opt-in fast
@@ -13,6 +15,16 @@ path (``--cert-fallback``) for demonstrations under time pressure — it is
 NEVER used silently, and NEVER after a timeout.  ``--time-limit SECONDS``
 bounds the live solve: on expiry the CLI reports TIME LIMIT / LIVE SOLVE
 INCOMPLETE with a nonzero exit.
+
+``opticore solve-milp <mps>`` runs the native branch-and-bound MILP engine
+(``opticore.lp.branch_bound.solve_milp``) on an MPS file carrying integer
+markers (``MARKER 'INTORG'/'INTEND'``) or BV/LI/UI bounds.  The honesty
+contract mirrors the LP core: exit status 0 only when the B&B search
+*proves* optimality; ``node_limit`` / ``time_limit`` / ``lp_status:*`` are
+reported as-is with a nonzero exit.  A returned incumbent is independently
+re-checked (row-type-aware residuals, bounds, integrality, recomputed
+``c @ x``) — that check verifies feasibility only, never optimality, and
+its tolerances are never weakened.
 
 Only the useful subset of the archived teammate CLI is ported:
 ``solve <mps> [--crossover] [-v]`` on top of the CURRENT
@@ -82,6 +94,35 @@ def _parse_args(argv=None):
     qp.add_argument("sif_file", help="path to the .SIF file (e.g. data/qp/real_benchmarks/maros_mesaras/QGROW15.SIF)")
     qp.add_argument("--verbose", "-v", action="store_true",
                     help="print iteration logs from the QP solver")
+    milp = sub.add_parser(
+        "solve-milp",
+        help="solve a mixed-integer LP (MPS with integer markers) by native branch-and-bound")
+    milp.add_argument("mps_file",
+                      help="path to the .mps file with integer markers/bounds "
+                           "(e.g. data/pk1.mps)")
+    milp.add_argument("--maximize", action="store_true",
+                      help="optimize the objective in the maximization sense "
+                           "(default: minimization; MPS OBJSENSE is not parsed)")
+    milp.add_argument("--node-limit", type=int, default=50_000, metavar="NODES",
+                      help="branch-and-bound node budget (default: 50000); on "
+                           "exhaustion the solve is reported honestly as node_limit")
+    milp.add_argument("--time-limit", type=float, default=None, metavar="SECONDS",
+                      help="optional wall-clock limit for the branch-and-bound search; "
+                           "on expiry the solve is reported honestly as time_limit")
+    milp.add_argument("--gap-tol", type=float, default=1e-4, metavar="GAP",
+                      help="relative MIP gap at which the incumbent is accepted as "
+                           "proven optimal (default: 1e-4)")
+    milp.add_argument("--int-tol", type=float, default=1e-6, metavar="TOL",
+                      help="integrality tolerance used for branching/pruning "
+                           "(default: 1e-6)")
+    milp.add_argument("--no-crossover-fallback", action="store_true",
+                      help="disable the bounded sparse-crossover fallback used when a "
+                           "node relaxation stalls numerically (default: enabled)")
+    milp.add_argument("--no-verify", action="store_true",
+                      help="skip the independent incumbent feasibility re-check "
+                           "(default: verify)")
+    milp.add_argument("--verbose", "-v", action="store_true",
+                      help="print branch-and-bound node logs (and tracebacks on failure)")
     return parser.parse_args(argv)
 
 
@@ -288,6 +329,169 @@ def cmd_solve_qp(args) -> int:
     return 0
 
 
+def _verify_milp_incumbent(lp, x, integer_mask, *, tol=1e-6) -> dict:
+    """Independently re-check a branch-and-bound incumbent from ORIGINAL data.
+
+    Mirrors ``tools/validate_milp_incumbent.py``: row-type-aware primal
+    residuals, variable bounds, integrality of the integer variables and an
+    independently recomputed ``c @ x``.  It does NOT prove optimality and
+    tolerances are never weakened; the caller reports the raw violations.
+    """
+    import numpy as np
+
+    x = np.asarray(x, dtype=np.float64)
+    resid = (np.asarray(lp.A @ x, dtype=np.float64).ravel()
+             - np.asarray(lp.b, dtype=np.float64).ravel())
+    row_bad = 0
+    worst_row = 0.0
+    for i, rt in enumerate(lp.row_types):
+        r = float(resid[i])
+        if rt == "E":
+            v = abs(r)
+        elif rt == "L":
+            v = max(r, 0.0)
+        else:
+            v = max(-r, 0.0)
+        worst_row = max(worst_row, v)
+        if v > tol:
+            row_bad += 1
+    lb = np.asarray(lp.lower_bounds, dtype=np.float64)
+    ub = np.asarray(lp.upper_bounds, dtype=np.float64)
+    bnd_bad = int(np.count_nonzero((x < lb - tol) | (x > ub + tol)))
+    mask = (np.asarray(integer_mask, dtype=bool) if integer_mask is not None
+            else np.zeros(lp.num_vars, dtype=bool))
+    int_bad = int(np.count_nonzero(mask & (np.abs(x - np.round(x)) > tol)))
+    return {
+        "ok": row_bad == 0 and bnd_bad == 0 and int_bad == 0,
+        "rows_violated": row_bad,
+        "bounds_violated": bnd_bad,
+        "integrality_violated": int_bad,
+        "worst_row": worst_row,
+        "objective_recomputed": float(np.asarray(lp.c, dtype=np.float64) @ x),
+    }
+
+
+def cmd_solve_milp(args) -> int:
+    try:
+        import numpy as np
+
+        from opticore.mps_parser import MPSParseError
+        from opticore.numerical_model import NumericalModelError, load_numeric_mps
+        from opticore.lp.branch_bound import MilpError, solve_milp
+    except Exception as exc:
+        return _fail(f"cannot initialise the OPTICORE MILP engine ({exc})",
+                     verbose=args.verbose, exc=exc)
+
+    path = args.mps_file
+    if not os.path.isfile(path):
+        return _fail(f"MPS file not found: {path}", verbose=args.verbose)
+
+    time_limit = args.time_limit
+    if time_limit is not None:
+        try:
+            time_limit = float(time_limit)
+        except (TypeError, ValueError):
+            return _fail(f"invalid --time-limit value: {args.time_limit!r} "
+                         f"(expected seconds as a number)", verbose=args.verbose)
+        if not (time_limit == time_limit and time_limit > 0.0):
+            return _fail(f"invalid --time-limit value: {args.time_limit!r} "
+                         f"(expected a positive number of seconds)",
+                         verbose=args.verbose)
+    node_limit = args.node_limit
+    if node_limit is None or node_limit < 1:
+        return _fail(f"invalid --node-limit value: {args.node_limit!r} "
+                     f"(expected a positive node budget)", verbose=args.verbose)
+    gap_tol = args.gap_tol
+    if not (gap_tol == gap_tol and gap_tol > 0.0):
+        return _fail(f"invalid --gap-tol value: {args.gap_tol!r} "
+                     f"(expected a positive relative gap)", verbose=args.verbose)
+
+    try:
+        t_load = time.perf_counter()
+        lp = load_numeric_mps(path, sparse=True)
+        load_sec = time.perf_counter() - t_load
+    except (MPSParseError, NumericalModelError) as exc:
+        return _fail(f"invalid MPS file {path!r}: {exc}", verbose=args.verbose, exc=exc)
+    except Exception as exc:
+        return _fail(f"could not load MPS file {path!r}: {exc}",
+                     verbose=args.verbose, exc=exc)
+
+    raw_mask = getattr(lp, "is_integer", None)
+    integer_mask = (np.asarray(raw_mask, dtype=bool) if raw_mask
+                    else np.zeros(lp.num_vars, dtype=bool))
+    n_integer = int(np.count_nonzero(integer_mask))
+    if n_integer == 0:
+        return _fail(f"no integer variables in {path!r}: solve-milp needs MPS integer "
+                     f"markers (MARKER/INTORG/INTEND) or BV/LI/UI bounds; use the "
+                     f"'solve' subcommand for a continuous LP", verbose=args.verbose)
+
+    try:
+        result = solve_milp(
+            lp,
+            integer_mask=integer_mask,
+            maximize=args.maximize,
+            int_tol=args.int_tol,
+            gap_tol=gap_tol,
+            node_limit=node_limit,
+            time_limit=time_limit,
+            verbose=args.verbose,
+            crossover_fallback=not args.no_crossover_fallback,
+        )
+    except MilpError as exc:
+        return _fail(f"MILP solve refused on {path!r}: {exc}",
+                     verbose=args.verbose, exc=exc)
+    except Exception as exc:
+        return _fail(f"MILP solve failed on {path!r}: {exc}",
+                     verbose=args.verbose, exc=exc)
+
+    sense = "maximize" if args.maximize else "minimize"
+    ok = result.status == "optimal"
+
+    verify = None
+    if result.x is not None and not args.no_verify:
+        verify = _verify_milp_incumbent(lp, result.x, integer_mask)
+
+    print("OPTICORE - MILP solver (indigenous branch-and-bound)")
+    print(f"  input file   : {path}")
+    print(f"  problem      : {lp.name} (objective row: {lp.objective_name})")
+    print(f"  variables    : {lp.num_vars} ({n_integer} integer, "
+          f"{lp.num_vars - n_integer} continuous)")
+    print(f"  constraints  : {lp.num_constraints}")
+    print(f"  nonzeros     : {lp.nnz}")
+    print(f"  sense        : {sense}")
+    print("  method       : native branch-and-bound + Mehrotra IPM node relaxations")
+    print(f"  status       : {result.status}")
+    print(f"  objective    : {_fmt(result.objective)}")
+    print(f"  best bound   : {_fmt(result.best_bound)}")
+    print(f"  relative gap : {_fmt_sci(result.gap)}")
+    print(f"  nodes        : {result.nodes_explored} explored "
+          f"(limit {result.node_limit}, {result.nodes_infeasible} pruned infeasible, "
+          f"{result.nodes_failed} dropped)")
+    print(f"  lp solves    : {result.lp_solves}")
+    print(f"  load time    : {load_sec:.4f} s")
+    print(f"  runtime      : {result.time_sec:.4f} s")
+    if result.heuristic_attempts:
+        print(f"  heuristic    : {result.heuristic_successes}/"
+              f"{result.heuristic_attempts} attempts found an incumbent "
+              f"(best {_fmt(result.heuristic_best_objective)})")
+    if result.node_failure_statuses:
+        print(f"  failure modes: {', '.join(result.node_failure_statuses[:6])}")
+    if verify is not None:
+        obj_delta = abs(verify["objective_recomputed"] - (result.objective or 0.0))
+        print(f"  verify       : rows_violated={verify['rows_violated']} "
+              f"bounds_violated={verify['bounds_violated']} "
+              f"integrality_violated={verify['integrality_violated']} "
+              f"worst_row={_fmt_sci(verify['worst_row'])}")
+        print(f"  verify obj   : recomputed={_fmt(verify['objective_recomputed'])} "
+              f"(delta {_fmt_sci(obj_delta)})")
+        print(f"  verify pass  : {verify['ok']}")
+    if not ok:
+        print(f"  detail       : {result.message}")
+    if verify is not None and not verify["ok"]:
+        return 1
+    return 0 if ok else 1
+
+
 def _run_live_solve(solve_lp, lp, *, crossover: bool, verbose: bool,
                     time_limit=None) -> dict:
     """Run the genuine live solve, optionally bounded by a wall-clock limit.
@@ -413,6 +617,8 @@ def main(argv=None) -> int:
         return code
     if args.command == "solve-qp":
         return cmd_solve_qp(args)
+    if args.command == "solve-milp":
+        return cmd_solve_milp(args)
     return _fail(f"unknown command: {args.command}", verbose=False)
 
 

@@ -354,6 +354,60 @@ It exists for demonstrations under time pressure, and must never be presented
 as a fresh solve. On any instance other than PILOT87 the flag is ignored with a
 notice and a normal live solve runs.
 
+### Mixed-integer MPS (native branch-and-bound)
+
+```bash
+opticore solve-milp data/pk1.mps --time-limit 60
+opticore solve-milp data/pk1.mps --node-limit 2000 --gap-tol 1e-4
+opticore solve-milp data/pk1.mps --maximize -v
+```
+
+`solve-milp` runs the indigenous branch-and-bound MILP engine
+(`opticore.lp.branch_bound.solve_milp`) on an MPS file whose variables carry
+integer markers (`MARKER 'INTORG'/'INTEND'`) or BV/LI/UI bounds. The node LP
+relaxations are solved by the same production Mehrotra IPM used by
+`opticore solve`.
+
+```text
+OPTICORE - MILP solver (indigenous branch-and-bound)
+  input file   : data/pk1.mps
+  problem      : pk1 (objective row: obj)
+  variables    : 86 (55 integer, 31 continuous)
+  constraints  : 45
+  nonzeros     : 915
+  sense        : minimize
+  method       : native branch-and-bound + Mehrotra IPM node relaxations
+  status       : optimal
+  objective    : ...
+  best bound   : ...
+  relative gap : ...
+  nodes        : ... explored (limit 50000, ... pruned infeasible, ... dropped)
+  lp solves    : ...
+  verify       : rows_violated=0 bounds_violated=0 integrality_violated=0 ...
+  verify pass  : True
+```
+
+The honesty contract mirrors the LP core: the exit status is **0 only when the
+search proves optimality**; `node_limit`, `time_limit` and `lp_status:<status>`
+are reported as-is with a nonzero exit, and an uncertified run NEVER prints
+`optimal`.
+
+| Flag | Meaning |
+|---|---|
+| `--maximize` | optimize in the maximization sense (default: minimization; MPS `OBJSENSE` is not parsed) |
+| `--node-limit N` | branch-and-bound node budget (default 50000) |
+| `--time-limit S` | wall-clock budget for the search; expiry is reported as `time_limit` |
+| `--gap-tol G` | relative MIP gap accepted as proof of optimality (default 1e-4) |
+| `--int-tol T` | integrality tolerance used for branching/pruning (default 1e-6) |
+| `--no-crossover-fallback` | disable the bounded sparse-crossover fallback for stalled node relaxations |
+| `--no-verify` | skip the independent incumbent feasibility re-check |
+
+Whenever an incumbent is returned it is re-checked independently from the
+original model data (row-type-aware residuals, variable bounds, integrality,
+recomputed `c @ x`). That check verifies **feasibility only — never
+optimality** — and its tolerances are not weakened; on `verify pass : False`
+the CLI exits nonzero.
+
 ### Strict certificate / certify certificate (stored fast-path artifacts)
 
 | Quantity | Value |
