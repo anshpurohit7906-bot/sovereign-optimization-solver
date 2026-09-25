@@ -99,6 +99,7 @@ def test_pilot4_plain_via_automatic_crossover(tmp_path) -> None:
         out_csv=out_csv,
         only=("pilot4_plain",),
         skip_pilot87_highs=True,
+        tol=1e-7,
     )
 
     assert len(rows) == 1
