@@ -48,10 +48,10 @@ _HARD_EXIT = False
 def _project_root() -> str:
     here = os.path.dirname(os.path.abspath(__file__))
     # The CLI now lives inside the ``opticore`` package.  ``__file__`` points
-    # into ``src/opticore/``, so the repository root is still one parent up
+    # into ``src/opticore/``, so the repository root is two parents up
     # from this package's path component and is used only for locating
     # repository-relative asset paths (e.g. stored pilot87 certificate files).
-    return os.path.normpath(os.path.join(here, ".."))
+    return os.path.normpath(os.path.join(here, "..", ".."))
 
 
 def _parse_args(argv=None):
