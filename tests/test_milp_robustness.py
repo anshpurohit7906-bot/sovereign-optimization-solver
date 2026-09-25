@@ -377,29 +377,133 @@ def test_global_deadline_overrides_local_budgets():
     assert "deadline" in res.message.lower(), res.message
 
 
-def test_global_deadline_mid_search():
-    """A modest ``time_limit`` that expires after root but before tree completes.
+def test_global_deadline_mid_search(monkeypatch):
+    """A global ``time_limit`` that expires *after* the search has begun.
 
-    With the IPM forced to fail (``max_iter=0``) every node uses the
-    crossover fallback, which is slower than the IPM.  A small global
-    ``time_limit=0.05`` is generous enough for the root to hit the fallback
-    but must terminate before the tree is fully explored, yielding a
-    ``time_limit`` or ``lp_status:time_limit`` result -- never ``"optimal"``.
+    The earlier version of this test relied on a real 0.05 s wall-clock race:
+    on fast CI machines the tiny knapsack tree finished before the deadline
+    and the solver legitimately reported ``"optimal"``.  Here the wall clock
+    and every node relaxation are mocked, so the interleaving is fixed:
+
+    1. the root relaxation returns a fixed fractional optimum,
+    2. the real branch-and-bound code branches normally on it,
+    3. the first child relaxation is allowed to complete (refining the
+       incumbent the root rounding heuristic already found),
+    4. *only then* the mocked clock jumps past the global deadline,
+    5. so the very next loop-top deadline check must break the search.
+
+    Production code is untouched: only module-local references used by
+    ``solve_milp`` (``branch_bound.time`` and ``branch_bound._relax``) are
+    replaced, and the real branching / heap / termination logic runs.
     """
-    import time as _time_mod
     lp = _knapsack_min()
     mask = np.ones(4, dtype=bool)
-    # Use a generous local budget so only the global deadline governs.
-    t0 = _time_mod.perf_counter()
-    res = solve_milp(lp, integer_mask=mask, gap_tol=1e-6,
-                     node_solve_max_iter=0, node_solve_time_limit=5.0,
-                     time_limit=0.05)
-    elapsed = _time_mod.perf_counter() - t0
+    time_limit = 0.05  # unchanged; with a mocked clock its value is not a race
+
+    class _FakeClock:
+        """Stand-in for the ``time`` module: only ``perf_counter`` is used."""
+
+        def __init__(self):
+            self.now = 0.0
+
+        def perf_counter(self):
+            return self.now
+
+    clock = _FakeClock()
+    monkeypatch.setattr(bb, "time", clock)
+
+    node_relaxations = 0
+    relax_calls = 0
+
+    def _fake_relax(node, *, deadline=None, **kwargs):
+        """Deterministic stand-in for every relaxation in the search.
+
+        The three call sites are told apart by the *bounds* of the LP handed
+        in, never by call order, so the fake cannot silently mistake the root
+        rounding heuristic's repair LP for a branch-and-bound node:
+
+        * root          -- no variable bound differs from ``[lb0, ub0]``
+        * heuristic fix -- every integer variable is pinned (``lb == ub``)
+        * B&B node      -- exactly one integer variable has a tightened bound
+        """
+        nonlocal node_relaxations, relax_calls
+        relax_calls += 1
+        lb_n = np.asarray(node.lower_bounds, dtype=np.float64)
+        ub_n = np.asarray(node.upper_bounds, dtype=np.float64)
+        is_root = (np.allclose(lb_n, lp.lower_bounds)
+                   and np.allclose(ub_n, lp.upper_bounds))
+        is_repair = bool(np.all(np.isclose(lb_n[mask], ub_n[mask])))
+        if not (is_root or is_repair):
+            node_relaxations += 1
+
+        if is_root:
+            # Root: the fixed fractional optimum of the knapsack relaxation,
+            # so the real branching code splits it (x1 = 0.75) into two children.
+            x = np.array([1.0, 0.75, 1.0, 0.0])  # objective -10.75
+        elif is_repair:
+            # Heuristic integer-fixing repair: hand back the pinned point so
+            # the heuristic's own independent verification decides.
+            x = np.clip(np.array([0.0, 0.0, 1.0, 1.0]), lb_n, ub_n)
+        else:
+            # First branch-and-bound node (x1 <= 0): the relaxation completes
+            # normally and yields the integer optimum -10 as a new incumbent.
+            x = np.clip(np.array([0.0, 0.0, 1.0, 1.0]), lb_n, ub_n)
+            if node_relaxations == 1:
+                # The deadline expires *after* this relaxation completes, so
+                # the next loop-top check is the one that must terminate.
+                assert deadline is not None
+                clock.now = deadline + 1.0
+        return bb._RelaxResult(
+            status="optimal",
+            objective=float(np.asarray(node.c, dtype=np.float64) @ x),
+            x=x,
+            message="deterministic mocked relaxation",
+        )
+
+    monkeypatch.setattr(bb, "_relax", _fake_relax)
+
+    res = solve_milp(lp, integer_mask=mask, gap_tol=1e-6, time_limit=time_limit)
+
+    # Root + exactly one completed node relaxation: the deadline stopped the
+    # *next* node, before any further work.  ``relax_calls`` also counts the
+    # root rounding heuristic's integer-fixing repair LPs, whose number is an
+    # implementation detail of the heuristic, hence only a lower bound here.
+    assert node_relaxations == 1, node_relaxations
+    assert relax_calls >= 2, relax_calls
+    # Search really began: at least one node was popped and expanded.
+    assert res.nodes_explored >= 1, res.nodes_explored
+    assert res.lp_solves >= 2, res.lp_solves
+    # Honesty: never claims a proof or infeasibility.
     assert res.status not in ("optimal", "infeasible"), (
-        f"status={res.status}; deadline should have terminated the solve"
+        f"status={res.status}; the deadline should have terminated the solve"
     )
-    assert elapsed < 5.0, f"deadline ignored: {elapsed:.2f}s"
-    assert "time" in res.status.lower() or "time" in res.message.lower()
+    # Termination is time-limit related (status is "time_limit" here).
+    assert "time" in res.status.lower() or "time" in res.message.lower(), (
+        f"status={res.status}; message={res.message}"
+    )
+    # An incumbent may exist; when it does it is consistent and feasible.
+    assert (res.x is None) == (res.objective is None), (res.x, res.objective)
+    if res.x is not None:
+        assert res.objective is not None
+        assert res.x.shape == (4,), res.x.shape
+        assert np.all(res.x >= -1e-9), res.x
+        assert np.all(res.x <= np.asarray(lp.upper_bounds) + 1e-9), res.x
+        # The reported incumbent must actually satisfy the model's rows.
+        for i, rt in enumerate(lp.row_types):
+            lhs = float(lp.A[i] @ res.x)
+            if rt == "E":
+                assert abs(lhs - lp.b[i]) <= 1e-6, (i, lhs, lp.b[i])
+            elif rt == "L":
+                assert lhs <= lp.b[i] + 1e-6, (i, lhs, lp.b[i])
+            elif rt == "G":
+                assert lhs >= lp.b[i] - 1e-6, (i, lhs, lp.b[i])
+        # ...and every integer variable must really be integral.
+        assert np.allclose(res.x[mask], np.round(res.x[mask]), atol=1e-6), res.x
+        # The objective must match the solution vector.
+        assert abs(float(lp.c @ res.x) - res.objective) <= 1e-6, (
+            float(lp.c @ res.x),
+            res.objective,
+        )
 
 
 def test_expired_deadline_unit_checks():

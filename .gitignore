@@ -51,3 +51,14 @@ experiment/crossover/sparse_repair.py
 experiment/crossover/stage1_out.txt
 experiment/crossover/terminal_diag.py
 experiment/crossover/verify_ipm_p87.py
+
+# Distribution and build artifacts
+src/opticore.egg-info/
+*.egg-info/
+build/
+dist/
+
+# Test output and log files
+test_output.txt
+test_full.txt
+
